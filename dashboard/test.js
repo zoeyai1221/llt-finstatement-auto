@@ -8,3 +8,7 @@ const asOf=new Date(2026,5,10);
 const x=L.computeMetrics(m.facts,{asOf,dataEnd:m.dataEnd,cash:69844.82});
 console.log(x.lastMonth,x.status,x.warnings,x.notes); for(const n of [3,6,12]){const w=x.windows[n];console.log(n,Math.round(w.burn),Math.round(w.inflow),Math.round(w.net),w.runway.toFixed(1))}
 console.log(x.composition);
+// runway history: last point's cash must equal the balance (asOf is after the last full month, so the tail is backed out)
+const last=x.months[x.months.length-1]; console.log('hist', x.months.filter(s=>s.runway!==null).map(s=>s.month+':'+s.runway.toFixed(1)).join(' '));
+const y=L.computeMetrics(m.facts,{asOf:new Date(2026,4,31),dataEnd:m.dataEnd,cash:1000}); const yl=y.months[y.months.length-1];
+console.log('month-end cash matches balance:', Math.abs(yl.cashEnd-1000)<1e-6, 'walk-back consistent:', Math.abs(y.months[y.months.length-2].cashEnd-(1000-yl.net))<1e-6);

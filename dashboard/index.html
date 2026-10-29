@@ -161,6 +161,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
       <div class="field"><label for="th-y">Watch below (months)</label><input id="th-y" type="number" min="1" step="0.5" style="width:90px"></div>
       <div class="field"><label for="th-r">Critical below (months)</label><input id="th-r" type="number" min="0.5" step="0.5" style="width:90px"></div>
       <div class="hint" id="cash-src" style="flex:1 1 240px"></div>
+      <p class="hint bad" id="th-err" style="flex-basis:100%" hidden>Critical must be lower than Watch, and both above 0. Still using Watch below <span id="th-cur"></span>.</p>
     </div>
 
     <div class="grid kpis" id="kpis"></div>
@@ -201,7 +202,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
     <div class="card" style="margin-top:14px" id="hist-card">
       <h2>Runway history</h2>
       <p class="hint" id="hist-hint"></p>
-      <div class="chartbox" id="hist-box" hidden><canvas id="c-hist" role="img" aria-label="Cash balance by month-end snapshot"></canvas></div>
+      <div class="chartbox" id="hist-box" hidden><canvas id="c-hist" role="img" aria-label="Estimated runway at each month-end, with Watch and Critical thresholds"></canvas></div>
     </div>
 
     <details class="card">
@@ -585,6 +586,21 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     if (primary && primary.runway !== null) status = primary.runway >= th.yellow ? 'good' : (primary.runway >= th.red ? 'warning' : 'critical');
     if (primaryN && primaryN < 12) notes.push('Only ' + list.length + ' complete months of data: the runway uses a ' + primaryN + '-month window. Export 12 months for a steadier figure.');
 
+    // runway history: walk cash back from the balance sheet one month's net flow at a time (cash basis),
+    // then divide by the trailing burn, shortening the window in the first months (3 at least)
+    var hasCash = opts.cash !== null && opts.cash !== undefined;
+    var flow = function (f) { return f.kind === 'expense' || f.kind === 'cogs' ? -f.amount : f.amount; };
+    var tail = 0, cutDay = ymd(cutoff);
+    facts.forEach(function (f) { if (f.month > lastFull && f.date <= cutDay) tail += flow(f); });
+    var cashEnd = hasCash ? opts.cash - tail : null;
+    for (var j = list.length - 1; j >= 0; j--) {
+      var s = list[j], k = Math.min(j + 1, primaryN || 3);
+      s.cashEnd = cashEnd;
+      s.runBurn = j + 1 >= 3 ? list.slice(j + 1 - k, j + 1).reduce(function (a, x) { return a + x.expense; }, 0) / k : null;
+      s.runway = cashEnd !== null && s.runBurn > 0 ? cashEnd / s.runBurn : null;
+      if (cashEnd !== null) cashEnd -= s.net;
+    }
+
     // composition over the primary window
     var comp = { expense: {}, revenue: {}, adjustments: 0 }, compMonths = primaryN ? list.slice(-primaryN) : [];
     compMonths.forEach(function (s) {
@@ -621,7 +637,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   // ready: dashboard is shown. Opens once both reports are in (or via "continue without").
   var state = { activity: [], position: null, errors: [], notes: [], ready: false };
   var charts = {};
-  var LS = { th: 'llt_thresholds', hist: 'llt_cash_history' };
+  var LS = { th: 'llt_thresholds' };
 
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
@@ -742,7 +758,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   var th = lsGet(LS.th, { yellow: 6, red: 3 });
   $('th-y').value = th.yellow; $('th-r').value = th.red;
-  ['cash', 'asofin', 'th-y', 'th-r'].forEach(function (id) { $(id).addEventListener('change', function () { render(false); }); });
+  // 'input' so the dashboard follows each keystroke, not just Enter or leaving the field
+  ['cash', 'asofin', 'th-y', 'th-r'].forEach(function (id) { $(id).addEventListener('input', function () { render(false); }); });
 
   /* ---------- rendering ---------- */
   function banner(items, cls) {
@@ -794,8 +811,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       return;
     }
 
-    th = { yellow: parseFloat($('th-y').value) || 6, red: parseFloat($('th-r').value) || 3 };
-    lsSet(LS.th, th);
+    // an invalid pair (e.g. half-typed) keeps the last good thresholds instead of mis-coloring the status
+    var ty = parseFloat($('th-y').value), tr = parseFloat($('th-r').value);
+    var thOk = ty > 0 && tr > 0 && tr < ty;
+    if (thOk) { th = { yellow: ty, red: tr }; lsSet(LS.th, th); }
+    $('th-err').hidden = thOk;
+    $('th-cur').textContent = th.yellow + ', Critical below ' + th.red;
+    $('th-y').setAttribute('aria-invalid', !thOk); $('th-r').setAttribute('aria-invalid', !thOk);
 
     var merged = L.mergeActivity(state.activity);
     var cash = currentCash(), asOf = currentAsOf();
@@ -813,7 +835,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       ? 'Cash read from "Total for Bank Accounts" in ' + state.position.fileName + (state.position.accounts.length ? ' (' + state.position.accounts.map(function (a) { return a.name + ' ' + money(a.balance); }).join(', ') + ')' : '') + '.'
       : 'Type the cash balance if you have no Statement of Financial Position; it should equal "Total for Bank Accounts".';
 
-    saveHistory(asOf, cash);
     renderKpis(m); renderWindows(m); renderCharts(m); renderTable(m);
   }
 
@@ -920,27 +941,35 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var grants = (m.composition.revenue['Grants'] || 0);
     $('rev-hint').textContent = 'By source, over the runway window. Grants are ' + (rtot ? Math.round(100 * grants / rtot) : 0) + '% of income in this window; check the same share in earlier years before assuming that is normal.';
 
-    renderHistory(P);
+    renderHistory(m, P, shown, labels);
   }
 
-  /* ---------- cash snapshots (browser-local) ---------- */
-  function saveHistory(asOf, cash) {
-    if (!asOf || cash === null) return;
-    var h = lsGet(LS.hist, []), k = L.ymd(asOf);
-    h = h.filter(function (x) { return x.asOf !== k; }); h.push({ asOf: k, cash: cash });
-    h.sort(function (a, b) { return a.asOf < b.asOf ? -1 : 1; }); lsSet(LS.hist, h);
-  }
-  function renderHistory(P) {
-    var h = lsGet(LS.hist, []);
-    if (h.length < 2) {
+  /* ---------- runway history (estimated from the activity data) ---------- */
+  function renderHistory(m, P, shown, labels) {
+    var pts = shown.filter(function (s) { return s.runway !== null; });
+    if (!pts.length) {
+      if (charts['c-hist']) { charts['c-hist'].destroy(); delete charts['c-hist']; }
       $('hist-box').hidden = true;
-      $('hist-hint').textContent = 'Each month you drop a balance sheet, its cash balance is remembered in this browser. The trend line appears once there are two or more month-ends.' + (h.length ? ' Saved so far: ' + h.length + '.' : '');
+      $('hist-hint').textContent = m.cash === null ? 'Enter the cash balance above to see how runway has moved month by month.' : 'Needs at least 3 complete months of activity data.';
       return;
     }
     $('hist-box').hidden = false;
-    $('hist-hint').textContent = 'Cash at each month-end you have loaded on this computer.';
-    var o = base(P); o.plugins.legend.display = false;
-    put('c-hist', { type: 'line', data: { labels: h.map(function (x) { return x.asOf; }), datasets: [{ label: 'Cash', data: h.map(function (x) { return x.cash; }), borderColor: P.groups.Payroll, backgroundColor: P.groups.Payroll, borderWidth: 2, pointRadius: 4, pointBorderColor: P.surface, pointBorderWidth: 2 }] }, options: o });
+    $('hist-hint').textContent = 'Estimated runway at each month-end: cash is worked back from the current balance using each month’s income and spending, then divided by the trailing ' + m.primaryN + '-month burn (shorter in the first months). Transfers and loans that never hit the Activity Detail are not included. Dashed lines are the Watch and Critical thresholds above.';
+    var th = m.thresholds, mo = function (v) { return v === null ? '–' : v.toFixed(1) + ' mo'; };
+    var line = function (label, v, color) { return { label: label, data: shown.map(function () { return v; }), borderColor: color, borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0, order: 2 }; };
+    var o = base(P);
+    o.scales.y.ticks.callback = function (v) { return v + ' mo'; };
+    o.scales.y.suggestedMax = th.yellow * 1.25;
+    o.plugins.tooltip.callbacks.label = function (c) {
+      if (c.datasetIndex) return ' ' + c.dataset.label + ': ' + mo(c.parsed.y);
+      var s = shown[c.dataIndex];
+      return ' Runway: ' + mo(s.runway) + ' (cash ' + money(s.cashEnd) + ', burn ' + money(s.runBurn) + '/mo)';
+    };
+    put('c-hist', { type: 'line', data: { labels: labels, datasets: [
+      { label: 'Runway', data: shown.map(function (s) { return s.runway === null ? null : +s.runway.toFixed(2); }), borderColor: P.ink, backgroundColor: P.ink, borderWidth: 2.5, pointRadius: 3, pointBorderColor: P.surface, pointBorderWidth: 1.5, order: 1, spanGaps: false },
+      line('Watch below ' + th.yellow + ' mo', th.yellow, cssv('--warn')),
+      line('Critical below ' + th.red + ' mo', th.red, cssv('--crit'))
+    ] }, options: o });
   }
 
   // the Reports dialog: every loaded file by name, with add / replace / remove

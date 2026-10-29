@@ -290,6 +290,21 @@
     if (primary && primary.runway !== null) status = primary.runway >= th.yellow ? 'good' : (primary.runway >= th.red ? 'warning' : 'critical');
     if (primaryN && primaryN < 12) notes.push('Only ' + list.length + ' complete months of data: the runway uses a ' + primaryN + '-month window. Export 12 months for a steadier figure.');
 
+    // runway history: walk cash back from the balance sheet one month's net flow at a time (cash basis),
+    // then divide by the trailing burn, shortening the window in the first months (3 at least)
+    var hasCash = opts.cash !== null && opts.cash !== undefined;
+    var flow = function (f) { return f.kind === 'expense' || f.kind === 'cogs' ? -f.amount : f.amount; };
+    var tail = 0, cutDay = ymd(cutoff);
+    facts.forEach(function (f) { if (f.month > lastFull && f.date <= cutDay) tail += flow(f); });
+    var cashEnd = hasCash ? opts.cash - tail : null;
+    for (var j = list.length - 1; j >= 0; j--) {
+      var s = list[j], k = Math.min(j + 1, primaryN || 3);
+      s.cashEnd = cashEnd;
+      s.runBurn = j + 1 >= 3 ? list.slice(j + 1 - k, j + 1).reduce(function (a, x) { return a + x.expense; }, 0) / k : null;
+      s.runway = cashEnd !== null && s.runBurn > 0 ? cashEnd / s.runBurn : null;
+      if (cashEnd !== null) cashEnd -= s.net;
+    }
+
     // composition over the primary window
     var comp = { expense: {}, revenue: {}, adjustments: 0 }, compMonths = primaryN ? list.slice(-primaryN) : [];
     compMonths.forEach(function (s) {

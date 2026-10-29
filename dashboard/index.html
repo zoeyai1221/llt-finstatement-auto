@@ -577,7 +577,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   'use strict';
   var L = window.LLT;
   var $ = function (id) { return document.getElementById(id); };
-  // ready: dashboard is shown. Click-to-choose builds at once; drag-and-drop waits for both reports.
+  // ready: dashboard is shown. Opens once both reports are in (or via "continue without").
   var state = { activity: [], position: null, errors: [], notes: [], ready: false };
   var charts = {};
   var LS = { th: 'llt_thresholds', hist: 'llt_cash_history' };
@@ -659,12 +659,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       fr.readAsArrayBuffer(file);
     });
   }
-  function ingest(list, picked) {
+  function ingest(list) {
     state.errors = [];
     Promise.all(Array.prototype.map.call(list, readFile)).then(function () {
       if (state.position && state.position.cash !== null) $('cash').value = state.position.cash;
       if (state.position && state.position.asOf) $('asofin').value = L.ymd(state.position.asOf);
-      if (picked || (state.activity.length && state.position)) state.ready = true;
+      if (state.activity.length && state.position) state.ready = true;
       render(true);
     });
   }
@@ -674,10 +674,10 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   drop.addEventListener('keydown', function (e) { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileIn.click(); } });
   $('btn-go').addEventListener('click', function (e) { e.stopPropagation(); state.ready = true; render(true); });
   $('btn-add').addEventListener('click', function () { fileIn.click(); });
-  fileIn.addEventListener('change', function () { if (fileIn.files.length) ingest(fileIn.files, true); fileIn.value = ''; });
+  fileIn.addEventListener('change', function () { if (fileIn.files.length) ingest(fileIn.files); fileIn.value = ''; });
   ['dragenter', 'dragover'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
   ['dragleave', 'drop'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'drop' || e.target === document || e.target === drop) drop.classList.remove('over'); }); });
-  document.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files.length) ingest(e.dataTransfer.files, false); });
+  document.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files.length) ingest(e.dataTransfer.files); });
   $('btn-reset').addEventListener('click', function () {
     state.activity = []; state.position = null; state.errors = []; state.ready = false; $('cash').value = ''; $('asofin').value = ''; render(true);
   });

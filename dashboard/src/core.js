@@ -230,13 +230,14 @@
     // opts: asOf (Date), dataEnd (Date), cash (number|null), thresholds {yellow, red}
     var cutoff = opts.asOf || opts.dataEnd;
     if (opts.asOf && opts.dataEnd && opts.dataEnd < opts.asOf) cutoff = opts.dataEnd;
-    var warnings = [];
+    // warnings need action; notes only explain what the figures already account for
+    var warnings = [], notes = [];
     if (opts.asOf && opts.dataEnd && ymd(opts.asOf) !== ymd(opts.dataEnd)) {
-      warnings.push('Balance sheet is as of ' + ymd(opts.asOf) + ' but the activity export ends ' + ymd(opts.dataEnd) + '. Re-export both as of the same month-end.');
+      notes.push('Balance sheet is as of ' + ymd(opts.asOf) + ' but the activity export ends ' + ymd(opts.dataEnd) + '. Re-export both as of the same month-end.');
     }
     var cutoffMonth = ym(cutoff);
     var lastFull = monthEnd(cutoffMonth) <= cutoff ? cutoffMonth : addMonths(cutoffMonth, -1);
-    if (lastFull !== cutoffMonth) warnings.push(cutoffMonth + ' is incomplete (data through ' + ymd(cutoff) + ') and is excluded from burn and runway.');
+    if (lastFull !== cutoffMonth) notes.push(cutoffMonth + ' is incomplete (data through ' + ymd(cutoff) + ') and is excluded from burn and runway.');
     var first = facts.length ? facts.reduce(function (a, f) { return f.month < a ? f.month : a; }, facts[0].month) : lastFull;
     var months = monthRange(first, lastFull);
 
@@ -287,7 +288,7 @@
     var primary = primaryN ? windows[primaryN] : null;
     var status = null;
     if (primary && primary.runway !== null) status = primary.runway >= th.yellow ? 'good' : (primary.runway >= th.red ? 'warning' : 'critical');
-    if (primaryN && primaryN < 12) warnings.push('Only ' + list.length + ' complete months of data: the runway uses a ' + primaryN + '-month window. Export 12 months for a steadier figure.');
+    if (primaryN && primaryN < 12) notes.push('Only ' + list.length + ' complete months of data: the runway uses a ' + primaryN + '-month window. Export 12 months for a steadier figure.');
 
     // composition over the primary window
     var comp = { expense: {}, revenue: {}, adjustments: 0 }, compMonths = primaryN ? list.slice(-primaryN) : [];
@@ -299,7 +300,7 @@
 
     return {
       lastMonth: lastFull, months: list, windows: windows, primaryN: primaryN, primary: primary, status: status,
-      cash: opts.cash, thresholds: th, composition: comp, warnings: warnings
+      cash: opts.cash, thresholds: th, composition: comp, warnings: warnings, notes: notes
     };
   }
 

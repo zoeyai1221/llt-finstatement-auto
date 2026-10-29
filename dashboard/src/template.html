@@ -89,6 +89,29 @@ th { color: var(--ink-2); font-weight: 600; }
 .scroll { overflow-x: auto; }
 .ok { color: var(--good-text); font-weight: 600; } .bad { color: var(--crit-text); font-weight: 600; }
 details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+dialog#rep-dlg { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--ink); }
+dialog#rep-dlg::backdrop { background: rgba(0,0,0,.35); }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 10px; border-bottom: 1px solid var(--grid); }
+.dlg-head h2 { margin: 0; font-size: 16px; }
+.dlg-head button { border: 0; font-size: 18px; line-height: 1; padding: 4px 8px; }
+#rep-body { padding: 4px 18px 16px; }
+#rep-body .banner { margin: 12px 0 0; }
+.rep-sec { padding-top: 14px; }
+.rep-sec + .rep-sec { border-top: 1px solid var(--grid); margin-top: 14px; }
+.rep-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rep-sec-head button.primary, #btn-reports { padding: 6px 14px; }
+.rep-sec-head h3 { margin: 0; font-size: 14px; font-weight: 650; }
+.rep-files { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.rep-files li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--wash); }
+.rep-files .meta { flex: 1; min-width: 0; }
+.rep-files .name { font-weight: 600; overflow-wrap: anywhere; }
+.rep-files .meta .hint { margin: 0; }
+.rep-files .bad { display: inline-flex; vertical-align: -2px; }
+.rep-files svg { width: 14px; height: 14px; }
+.rep-files .empty { background: none; padding: 2px 0; color: var(--ink-2); }
+button.rm { width: 30px; height: 30px; padding: 0; font-size: 18px; line-height: 1; flex: none; }
+button.rm:disabled { opacity: .4; cursor: not-allowed; }
+.rep-sec > .hint { margin-top: 6px; }
 .files li { margin: 2px 0; }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -103,7 +126,7 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
       <div class="sub" id="asof">Drop this month's QuickBooks exports to begin.</div>
     </div>
     <div class="toolbar">
-      <button id="btn-add" type="button">Add files&hellip;</button>
+      <button id="btn-reports" class="primary" type="button" hidden>Reports&hellip;</button>
       <button id="btn-reset" type="button" hidden>Start over</button>
     </div>
   </header>
@@ -123,6 +146,10 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
       <button id="btn-go" class="link" type="button" hidden>Skip it and type the cash balance by hand</button>
     </div>
   </div>
+  <dialog id="rep-dlg" aria-labelledby="rep-title">
+    <div class="dlg-head"><h2 id="rep-title">Reports loaded</h2><button id="rep-close" type="button" aria-label="Close">&times;</button></div>
+    <div id="rep-body"></div>
+  </dialog>
   <input id="file" type="file" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
 
   <section id="dash" hidden>
@@ -175,8 +202,8 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
       <div class="chartbox" id="hist-box" hidden><canvas id="c-hist" role="img" aria-label="Cash balance by month-end snapshot"></canvas></div>
     </div>
 
-    <details class="card" open>
-      <summary>Data checks</summary>
+    <details class="card">
+      <summary>Data checks <span id="check-sum"></span></summary>
       <div id="checks"></div>
     </details>
 
@@ -216,6 +243,7 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
 
   var money = function (x, d) { return x === null || x === undefined || isNaN(x) ? '–' : (x < 0 ? '-$' : '$') + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); };
   var mlabel = function (m) { var p = m.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1] - 1] + " '" + p[0].slice(2); };
+  var dlabel = function (d) { return mlabel(L.ymd(d).slice(0, 7)).replace(' ', ' ' + d.getDate() + ' '); };
   var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var cssv = function (n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); };
 
@@ -225,11 +253,13 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
     if (kind === 'activity') {
       if (isPdf) { state.errors.push(file.name + ': the Activity Detail PDF has too many columns to read reliably. Please export this report to Excel instead.'); return; }
       var a = L.parseActivity(rows, file.name);
-      state.activity = state.activity.filter(function (x) { return x.fileName !== file.name; }).concat([a]);
+      // newest period first, so the Reports list reads the same however the files were dropped
+      state.activity = state.activity.filter(function (x) { return x.fileName !== file.name; }).concat([a])
+        .sort(function (x, y) { return (y.period ? +y.period.start : 0) - (x.period ? +x.period.start : 0); });
     } else if (kind === 'position') {
       state.position = L.parsePosition(rows, file.name);
     } else if (kind === 'activity-summary') {
-      state.errors.push(file.name + ': this is the summary "Statement of Activity". Please export the "Statement of Activity Detail" instead.');
+      state.errors.push(file.name + ': this is the summary "Statement of Activity" (totals only, no transactions), so it was not used. The dashboard needs the "Statement of Activity Detail" exported to Excel.');
     } else {
       state.errors.push(file.name + ': not recognized as a QuickBooks Statement of Activity Detail or Statement of Financial Position.');
     }
@@ -299,11 +329,24 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
   }
 
   var drop = $('drop'), fileIn = $('file');
-  drop.addEventListener('click', function () { fileIn.click(); });
-  drop.addEventListener('keydown', function (e) { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileIn.click(); } });
+  // the report kind is detected from the file itself; accept only narrows what the picker offers
+  function pick(accept) { fileIn.accept = accept || '.xlsx,.xls,.csv,.pdf'; fileIn.click(); }
+  drop.addEventListener('click', function () { pick(); });
+  drop.addEventListener('keydown', function (e) { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pick(); } });
   $('btn-go').addEventListener('click', function (e) { e.stopPropagation(); state.ready = true; render(true); });
-  $('btn-add').addEventListener('click', function () { fileIn.click(); });
-  $('btn-pick').addEventListener('click', function (e) { e.stopPropagation(); fileIn.click(); });
+  var dlg = $('rep-dlg');
+  $('btn-reports').addEventListener('click', function () { renderReports(); dlg.showModal(); });
+  $('rep-close').addEventListener('click', function () { dlg.close(); });
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+  $('rep-body').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.add === 'act') pick('.xlsx,.xls,.csv');
+    else if (b.dataset.add === 'pos') pick();
+    else if (b.dataset.rm === 'pos') { state.position = null; $('cash').value = ''; $('asofin').value = ''; state.errors = []; render(true); }
+    else if (b.dataset.rm) { state.activity.splice(+b.dataset.rm, 1); state.errors = []; render(true); }
+  });
+  $('btn-pick').addEventListener('click', function (e) { e.stopPropagation(); pick(); });
   fileIn.addEventListener('change', function () { if (fileIn.files.length) ingest(fileIn.files); fileIn.value = ''; });
   ['dragenter', 'dragover'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
   ['dragleave', 'drop'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'drop' || e.target === document || e.target === drop) drop.classList.remove('over'); }); });
@@ -352,9 +395,11 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
 
   function render(fresh) {
     var have = state.ready && state.activity.length > 0;
+    $('btn-reports').hidden = !have;
+    $('btn-reports').textContent = 'Reports (' + (state.activity.length + (state.position ? 1 : 0)) + ')…';
+    if (dlg.open) renderReports();
     $('dash').hidden = !have; $('btn-reset').hidden = !have && !state.position && !state.activity.length;
     drop.hidden = have;
-    $('btn-add').hidden = !have;
     renderSlots();
     var msgs = banner(state.errors, 'err');
     if (!have) {
@@ -376,7 +421,7 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
     state.activity.forEach(function (a) { warn = warn.concat(a.warnings.map(function (w) { return a.fileName + ': ' + w; })); });
     if (state.position) warn = warn.concat(state.position.warnings);
     if (!state.position && cash === null) warn.push('No Statement of Financial Position loaded. Drop it in, or type the cash balance above to see runway.');
-    $('msgs').innerHTML = msgs + banner(warn);
+    $('msgs').innerHTML = msgs + banner(renderChecks(m.notes), 'err') + banner(warn);
 
     $('asof').textContent = 'Through ' + mlabel(m.lastMonth) + ' (last complete month)' + (asOf ? ' · cash as of ' + L.ymd(asOf) : '');
     $('cash-src').textContent = state.position && state.position.cash !== null && cash === state.position.cash
@@ -384,7 +429,7 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
       : 'Type the cash balance if you have no Statement of Financial Position; it should equal "Total for Bank Accounts".';
 
     saveHistory(asOf, cash);
-    renderKpis(m); renderWindows(m); renderCharts(m); renderChecks(); renderTable(m);
+    renderKpis(m); renderWindows(m); renderCharts(m); renderTable(m);
   }
 
   function renderKpis(m) {
@@ -513,15 +558,46 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
     put('c-hist', { type: 'line', data: { labels: h.map(function (x) { return x.asOf; }), datasets: [{ label: 'Cash', data: h.map(function (x) { return x.cash; }), borderColor: P.groups.Payroll, backgroundColor: P.groups.Payroll, borderWidth: 2, pointRadius: 4, pointBorderColor: P.surface, pointBorderWidth: 2 }] }, options: o });
   }
 
-  function renderChecks() {
-    var h = '<ul class="files">';
+  // the Reports dialog: every loaded file by name, with add / replace / remove
+  function renderReports() {
+    var A = state.activity, P = state.position;
+    var row = function (name, meta, bad, rm, canRm) {
+      return '<li><div class="meta"><div class="name">' + esc(name) + (bad ? ' <span class="bad" title="Totals do not match the report">' + ICON.critical + '</span>' : '') + '</div><p class="hint">' + esc(meta) + '</p></div>' +
+        '<button class="rm" type="button" data-rm="' + rm + '"' + (canRm ? ' aria-label="Remove ' + esc(name) + '"' : ' disabled title="Add another Activity Detail before removing this one, or use Start over"') + '>&minus;</button></li>';
+    };
+    var h = state.errors.length ? banner(state.errors, 'err') : '';
+    h += '<section class="rep-sec"><div class="rep-sec-head"><h3>Statement of Activity Detail</h3><button class="primary" type="button" data-add="act">+ Add</button></div><ul class="rep-files">' +
+      A.map(function (a, i) {
+        var meta = (a.period ? dlabel(a.period.start) + ' – ' + dlabel(a.period.end) : 'period unknown') + ' · ' + a.rowCount + ' transactions';
+        return row(a.fileName, meta, a.checks.some(function (c) { return !c.ok; }), i, A.length > 1);
+      }).join('') + '</ul><p class="hint">You can add more than one. Add older exports to extend the history; overlapping months count once.</p></section>';
+    h += '<section class="rep-sec"><div class="rep-sec-head"><h3>Statement of Financial Position</h3><button class="primary" type="button" data-add="pos">' + (P ? 'Replace' : '+ Add') + '</button></div><ul class="rep-files">' +
+      (P ? row(P.fileName, 'as of ' + (P.asOf ? dlabel(P.asOf) : '?') + ' · cash ' + money(P.cash), false, 'pos', true)
+        : '<li class="empty">Not loaded. Cash is typed in on the dashboard.</li>') +
+      '</ul><p class="hint">Only one is used. Replacing it also updates the cash balance and date.</p></section>';
+    $('rep-body').innerHTML = h;
+  }
+
+  // each Activity Detail is checked against its own totals; mismatches also go to the top banner
+  function renderChecks(notes) {
+    var bad = [], h = '<ul class="files">';
     state.activity.forEach(function (a) {
       h += '<li><b>' + esc(a.fileName) + '</b> &mdash; ' + (a.period ? L.ymd(a.period.start) + ' to ' + L.ymd(a.period.end) : 'period unknown') + ', ' + a.rowCount + ' transactions, ' + (a.basis || 'basis unknown') + ' basis';
-      h += '<ul>' + a.checks.map(function (c) { return '<li>' + esc(c.label) + ': computed ' + money(c.computed, 2) + ' vs. report ' + money(c.reported, 2) + ' <span class="' + (c.ok ? 'ok">✓ matches' : 'bad">✕ differs') + '</span></li>'; }).join('') + '</ul></li>';
+      h += '<ul>' + a.checks.map(function (c) {
+        if (!c.ok) bad.push(a.fileName + ': ' + c.label + ' adds up to ' + money(c.computed, 2) + ' but the report says ' + money(c.reported, 2) + '. Some rows may not have been read; check the export before relying on these figures.');
+        return '<li>' + esc(c.label) + ': computed ' + money(c.computed, 2) + ' vs. report ' + money(c.reported, 2) + ' <span class="' + (c.ok ? 'ok">✓ matches' : 'bad">✕ differs') + '</span></li>';
+      }).join('') + '</ul></li>';
     });
     if (state.position) h += '<li><b>' + esc(state.position.fileName) + '</b> &mdash; as of ' + (state.position.asOf ? L.ymd(state.position.asOf) : '?') + ', cash ' + money(state.position.cash, 2) + (state.position.liabilities !== null ? ', liabilities ' + money(state.position.liabilities, 2) : '') + '</li>';
-    h += '</ul><p class="hint">Months are taken from the most recent export that fully covers them, so overlapping exports are never double-counted. Only complete months feed burn and runway.</p>';
+    h += '</ul>';
+    if (notes.length) h += '<p style="margin:10px 0 2px"><b>Notes</b></p><ul>' + notes.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
+    h += '<p class="hint">Months are taken from the most recent export that fully covers them, so overlapping exports are never double-counted. Only complete months feed burn and runway.</p>';
     $('checks').innerHTML = h;
+
+    var checked = state.activity.some(function (a) { return a.checks.length; });
+    $('check-sum').className = bad.length ? 'bad' : checked ? 'ok' : 'hint';
+    $('check-sum').innerHTML = bad.length ? ICON.critical + 'totals do not match QuickBooks' : checked ? ICON.good + 'totals match QuickBooks' : 'no report totals to compare';
+    return bad;
   }
 
   function renderTable(m) {

@@ -6,5 +6,5 @@ files.forEach(f=>console.log(f.period.start.toDateString(),f.period.end.toDateSt
 const m=L.mergeActivity(files); console.log(m.firstMonth,m.lastMonth,m.facts.length,m.notes);
 const asOf=new Date(2026,5,10);
 const x=L.computeMetrics(m.facts,{asOf,dataEnd:m.dataEnd,cash:69844.82});
-console.log(x.lastMonth,x.status,x.warnings); for(const n of [3,6,12]){const w=x.windows[n];console.log(n,Math.round(w.burn),Math.round(w.inflow),Math.round(w.net),w.runway.toFixed(1))}
+console.log(x.lastMonth,x.status,x.warnings,x.notes); for(const n of [3,6,12]){const w=x.windows[n];console.log(n,Math.round(w.burn),Math.round(w.inflow),Math.round(w.net),w.runway.toFixed(1))}
 console.log(x.composition);

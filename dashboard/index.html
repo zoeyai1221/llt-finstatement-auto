@@ -10,7 +10,7 @@
   --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
   --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --wash: #f0efec;
   --s-payroll: #2a78d6; --s-software: #eb6834; --s-insurance: #1baf7a; --s-other: #898781;
-  --s-income: #4a3aa7; --s-expense: #52514e;
+  --s-income: #4a3aa7; --s-expense: #b0aea6;
   --good: #0ca30c; --good-text: #006300; --warn: #fab219; --warn-text: #7a5300; --crit: #d03b3b; --crit-text: #a52626;
 }
 @media (prefers-color-scheme: dark) {
@@ -19,7 +19,7 @@
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: #262624;
     --s-payroll: #3987e5; --s-software: #d95926; --s-insurance: #199e70; --s-other: #898781;
-    --s-income: #9085e9; --s-expense: #c3c2b7;
+    --s-income: #9085e9; --s-expense: #5c5b56;
     --good-text: #0ca30c; --warn-text: #fab219; --crit-text: #ec6b6b;
   }
 }
@@ -28,7 +28,7 @@
   --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
   --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: #262624;
   --s-payroll: #3987e5; --s-software: #d95926; --s-insurance: #199e70; --s-other: #898781;
-  --s-income: #9085e9; --s-expense: #c3c2b7;
+  --s-income: #9085e9; --s-expense: #5c5b56;
   --good-text: #0ca30c; --warn-text: #fab219; --crit-text: #ec6b6b;
 }
 * { box-sizing: border-box; }
@@ -203,6 +203,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
       <h2>Runway history</h2>
       <p class="hint" id="hist-hint"></p>
       <div class="chartbox" id="hist-box" hidden><canvas id="c-hist" role="img" aria-label="Estimated runway at each month-end, with Watch and Critical thresholds"></canvas></div>
+      <p id="hist-proj" style="margin:10px 0 0" hidden></p>
     </div>
 
     <details class="card">
@@ -949,13 +950,23 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var pts = shown.filter(function (s) { return s.runway !== null; });
     if (!pts.length) {
       if (charts['c-hist']) { charts['c-hist'].destroy(); delete charts['c-hist']; }
-      $('hist-box').hidden = true;
+      $('hist-box').hidden = true; $('hist-proj').hidden = true;
       $('hist-hint').textContent = m.cash === null ? 'Enter the cash balance above to see how runway has moved month by month.' : 'Needs at least 3 complete months of activity data.';
       return;
     }
     $('hist-box').hidden = false;
     $('hist-hint').textContent = 'Estimated runway at each month-end: cash is worked back from the current balance using each month’s income and spending, then divided by the trailing ' + m.primaryN + '-month burn (shorter in the first months). Transfers and loans that never hit the Activity Detail are not included. Dashed lines are the Watch and Critical thresholds above.';
     var th = m.thresholds, mo = function (v) { return v === null ? '–' : v.toFixed(1) + ' mo'; };
+
+    // with no new income runway falls one month per month, so each threshold is (runway - threshold) months out
+    var r = m.primary && m.primary.runway, from = currentAsOf() || new Date(+m.lastMonth.slice(0, 4), +m.lastMonth.slice(5, 7), 0);
+    var when = function (t) { return '<b>' + new Date(+from + (r - t) * 30.44 * 864e5).toLocaleString('en-US', { month: 'short', year: 'numeric' }) + '</b>'; };
+    var W = 'Watch (' + th.yellow + ' mo)', C = 'Critical (' + th.red + ' mo)';
+    $('hist-proj').hidden = r === null || r === undefined;
+    if (!$('hist-proj').hidden) $('hist-proj').innerHTML =
+      r >= th.yellow ? 'If no new income arrives, runway drops below ' + W + ' around ' + when(th.yellow) + ' and below ' + C + ' around ' + when(th.red) + '.'
+      : r >= th.red ? 'Runway is already below ' + W + '. If no new income arrives, it drops below ' + C + ' around ' + when(th.red) + '.'
+      : 'Runway is already below ' + C + '.';
     var line = function (label, v, color) { return { label: label, data: shown.map(function () { return v; }), borderColor: color, borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0, order: 2 }; };
     var o = base(P);
     o.scales.y.ticks.callback = function (v) { return v + ' mo'; };

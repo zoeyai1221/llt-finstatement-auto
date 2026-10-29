@@ -59,8 +59,16 @@ h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; }
 .slots li.done { color: var(--good-text); }
 .slots li.todo { color: var(--ink-2); }
 .drop .slots b { font-size: inherit; }
-.drop .go { margin-top: 12px; }
 .slots svg { width: 14px; height: 14px; flex: none; }
+.drop.partial { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.drop.partial .steps, .drop.partial .slots li.todo { display: none; }
+.drop.partial .slots { order: -1; margin: 0; }
+.drop.partial #drop-title { font-size: 18px; }
+.next { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+button.link { border: 0; background: none; padding: 2px 4px; color: var(--ink-2); text-decoration: underline; font-size: 13px; }
+button.link:hover { background: none; color: var(--ink); }
+button.primary { background: var(--s-payroll); border-color: var(--s-payroll); color: #fff; font-weight: 600; padding: 9px 18px; }
+button.primary:hover { background: var(--s-payroll); filter: brightness(1.08); }
 button, .btn { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 button:hover { background: var(--wash); }
 button:focus-visible, input:focus-visible, summary:focus-visible, .drop:focus-visible { outline: 2px solid var(--s-payroll); outline-offset: 2px; }
@@ -103,14 +111,17 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
   <div id="msgs"></div>
 
   <div id="drop" class="drop" tabindex="0" role="button" aria-label="Drop QuickBooks reports (Excel or PDF) here or press Enter to choose files">
-    <b id="drop-title">Drop the two QuickBooks reports here</b> <span class="sub">(together or one at a time, or click to choose)</span>
+    <b id="drop-title">Drop the two QuickBooks reports here</b> <span class="sub" id="drop-sub">(together or one at a time, or click to choose)</span>
     <ol class="steps">
       <li><b>Statement of Activity Detail</b> &mdash; Cash Basis, from 12 months back to the last day of last month. Export to <b>Excel</b>.</li>
       <li><b>Statement of Financial Position</b> &mdash; Cash Basis, as of the last day of last month. Excel or PDF both work.</li>
       <li>Drop them here, together or one after the other. File names do not matter. Nothing is uploaded; everything stays in this browser tab.</li>
     </ol>
     <ul class="slots" id="slots" aria-live="polite" hidden></ul>
-    <button id="btn-go" class="go" type="button" hidden>Build dashboard without the Financial Position (type cash by hand)</button>
+    <div class="next" id="next" hidden>
+      <button id="btn-pick" class="primary" type="button">Choose file&hellip;</button>
+      <button id="btn-go" class="link" type="button" hidden>Skip it and type the cash balance by hand</button>
+    </div>
   </div>
   <input id="file" type="file" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
 
@@ -292,6 +303,7 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
   drop.addEventListener('keydown', function (e) { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileIn.click(); } });
   $('btn-go').addEventListener('click', function (e) { e.stopPropagation(); state.ready = true; render(true); });
   $('btn-add').addEventListener('click', function () { fileIn.click(); });
+  $('btn-pick').addEventListener('click', function (e) { e.stopPropagation(); fileIn.click(); });
   fileIn.addEventListener('change', function () { if (fileIn.files.length) ingest(fileIn.files); fileIn.value = ''; });
   ['dragenter', 'dragover'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
   ['dragleave', 'drop'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'drop' || e.target === document || e.target === drop) drop.classList.remove('over'); }); });
@@ -325,10 +337,16 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
     var slot = function (done, name, detail) {
       return '<li class="' + (done ? 'done' : 'todo') + '">' + (done ? ICON.good : ICON.todo) + '<span><b>' + name + '</b> &mdash; ' + esc(detail) + '</span></li>';
     };
+    // exactly one of the two reports is in: show what is loaded, then one clear ask for the other
+    var partial = !!A.length !== !!P;
+    drop.classList.toggle('partial', partial);
+    $('drop-title').textContent = partial ? 'Next: drop or choose the ' + (A.length ? 'Statement of Financial Position' : 'Statement of Activity Detail') : 'Drop the two QuickBooks reports here';
+    $('drop-sub').hidden = partial;
     $('slots').hidden = !A.length && !P;
     $('slots').innerHTML =
       slot(A.length > 0, 'Statement of Activity Detail', A.length ? A.map(function (a) { return a.fileName; }).join(', ') : 'drop it here next') +
       slot(!!P, 'Statement of Financial Position', P ? P.fileName + (P.asOf ? ' (as of ' + L.ymd(P.asOf) + ')' : '') : 'drop it here next');
+    $('next').hidden = !partial;
     $('btn-go').hidden = !(A.length && !P);
   }
 
@@ -341,8 +359,8 @@ details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; paddi
     var msgs = banner(state.errors, 'err');
     if (!have) {
       $('msgs').innerHTML = msgs;
-      $('asof').textContent = state.activity.length ? 'Activity Detail loaded. Now drop the Statement of Financial Position.'
-        : state.position ? 'Financial Position loaded. Now drop the Statement of Activity Detail.' : "Drop this month's QuickBooks exports to begin.";
+      $('asof').innerHTML = state.activity.length ? 'Activity Detail loaded. Now drop the <b>Statement of Financial Position</b>.'
+        : state.position ? 'Financial Position loaded. Now drop the <b>Statement of Activity Detail</b>.' : "Drop this month's QuickBooks exports to begin.";
       return;
     }
 

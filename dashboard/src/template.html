@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLT Financial Health Dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --wash: #f0efec;
+  --s-payroll: #2a78d6; --s-software: #eb6834; --s-insurance: #1baf7a; --s-other: #898781;
+  --s-income: #4a3aa7; --s-expense: #52514e;
+  --good: #0ca30c; --good-text: #006300; --warn: #fab219; --warn-text: #7a5300; --crit: #d03b3b; --crit-text: #a52626;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: #262624;
+    --s-payroll: #3987e5; --s-software: #d95926; --s-insurance: #199e70; --s-other: #898781;
+    --s-income: #9085e9; --s-expense: #c3c2b7;
+    --good-text: #0ca30c; --warn-text: #fab219; --crit-text: #ec6b6b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: #262624;
+  --s-payroll: #3987e5; --s-software: #d95926; --s-insurance: #199e70; --s-other: #898781;
+  --s-income: #9085e9; --s-expense: #c3c2b7;
+  --good-text: #0ca30c; --warn-text: #fab219; --crit-text: #ec6b6b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 24px 20px 64px; }
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+h1 { font-size: 22px; margin: 0; font-weight: 650; }
+.sub { color: var(--ink-2); margin-top: 2px; }
+h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.grid { display: grid; gap: 14px; }
+.kpis { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin-bottom: 14px; }
+.two { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); margin-top: 14px; }
+@media (max-width: 520px) { .two { grid-template-columns: 1fr; } }
+.kpi .label { color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.kpi .value { font-size: 34px; font-weight: 650; margin: 4px 0 2px; }
+.kpi .note { color: var(--ink-2); font-size: 12.5px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; padding: 3px 10px 3px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.chip.good { color: var(--good-text); } .chip.warning { color: var(--warn-text); } .chip.critical { color: var(--crit-text); }
+.chip svg { width: 14px; height: 14px; }
+.drop { border: 2px dashed var(--axis); border-radius: 14px; padding: 28px 20px; text-align: center; background: var(--surface); cursor: pointer; transition: background .15s, border-color .15s; }
+.drop.over { background: var(--wash); border-color: var(--s-payroll); }
+.drop b { font-size: 16px; }
+.steps { color: var(--ink-2); margin: 10px auto 0; max-width: 640px; text-align: left; }
+.steps li { margin: 3px 0; }
+.slots { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px 24px; justify-content: center; font-size: 13px; }
+.slots li { display: inline-flex; align-items: center; gap: 6px; }
+.slots li.done { color: var(--good-text); }
+.slots li.todo { color: var(--ink-2); }
+.drop .slots b { font-size: inherit; }
+.drop .go { margin-top: 12px; }
+.slots svg { width: 14px; height: 14px; flex: none; }
+button, .btn { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button:hover { background: var(--wash); }
+button:focus-visible, input:focus-visible, summary:focus-visible, .drop:focus-visible { outline: 2px solid var(--s-payroll); outline-offset: 2px; }
+input[type=number], input[type=date] { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 5px 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-2); }
+.field input { width: 150px; }
+.banner { border: 1px solid var(--border); border-left: 4px solid var(--warn); background: var(--surface); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+.banner.err { border-left-color: var(--crit); }
+.banner ul { margin: 0; padding-left: 18px; }
+.chartbox { position: relative; height: 300px; margin-top: 8px; }
+.chartbox.tall { height: 340px; }
+.hint { color: var(--ink-2); font-size: 12.5px; margin: 2px 0 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 600; }
+.scroll { overflow-x: auto; }
+.ok { color: var(--good-text); font-weight: 600; } .bad { color: var(--crit-text); font-weight: 600; }
+details { margin-top: 14px; } summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.files li { margin: 2px 0; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Ladies Let's Talk &middot; Financial Health</h1>
+      <div class="sub" id="asof">Drop this month's QuickBooks exports to begin.</div>
+    </div>
+    <div class="toolbar">
+      <button id="btn-add" type="button">Add files&hellip;</button>
+      <button id="btn-reset" type="button" hidden>Start over</button>
+    </div>
+  </header>
+
+  <div id="msgs"></div>
+
+  <div id="drop" class="drop" tabindex="0" role="button" aria-label="Drop QuickBooks reports (Excel or PDF) here or press Enter to choose files">
+    <b id="drop-title">Drop the two QuickBooks reports here</b> <span class="sub">(together or one at a time, or click to choose)</span>
+    <ol class="steps">
+      <li><b>Statement of Activity Detail</b> &mdash; Cash Basis, from 12 months back to the last day of last month. Export to <b>Excel</b>.</li>
+      <li><b>Statement of Financial Position</b> &mdash; Cash Basis, as of the last day of last month. Excel or PDF both work.</li>
+      <li>Drop them here, together or one after the other. File names do not matter. Nothing is uploaded; everything stays in this browser tab.</li>
+    </ol>
+    <ul class="slots" id="slots" aria-live="polite" hidden></ul>
+    <button id="btn-go" class="go" type="button" hidden>Build dashboard without the Financial Position (type cash by hand)</button>
+  </div>
+  <input id="file" type="file" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
+
+  <section id="dash" hidden>
+    <div class="card row" style="margin-bottom:14px" id="inputs">
+      <div class="field"><label for="cash">Cash balance ($)</label><input id="cash" type="number" step="0.01" inputmode="decimal"></div>
+      <div class="field"><label for="asofin">As of</label><input id="asofin" type="date"></div>
+      <div class="field"><label for="th-y">Watch below (months)</label><input id="th-y" type="number" min="1" step="0.5" style="width:90px"></div>
+      <div class="field"><label for="th-r">Critical below (months)</label><input id="th-r" type="number" min="0.5" step="0.5" style="width:90px"></div>
+      <div class="hint" id="cash-src" style="flex:1 1 240px"></div>
+    </div>
+
+    <div class="grid kpis" id="kpis"></div>
+
+    <div class="card">
+      <h2>Runway by averaging window</h2>
+      <p class="hint">Runway = cash &divide; average monthly gross burn. It assumes no new income (stress case). The 12-month window smooths annual bills; the 3-month window shows the recent pace.</p>
+      <div class="scroll"><table id="win-table"></table></div>
+      <p class="hint" id="lumpy"></p>
+    </div>
+
+    <div class="grid two">
+      <div class="card">
+        <h2>Monthly spending</h2>
+        <p class="hint">Stacked bars by cost type, with 3- and 12-month averages (the average lines are the burn rate).</p>
+        <div class="chartbox tall"><canvas id="c-spend" role="img" aria-label="Monthly spending by cost type with rolling averages"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Income vs. spending</h2>
+        <p class="hint">Where money comes in lumps and where it only goes out.</p>
+        <div class="chartbox tall"><canvas id="c-flow" role="img" aria-label="Monthly income versus spending"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid two">
+      <div class="card">
+        <h2 id="t-exp">Where the money went</h2>
+        <p class="hint">By account, over the runway window. Colors match the cost types above.</p>
+        <div class="chartbox"><canvas id="c-exp" role="img" aria-label="Spending by account"></canvas></div>
+      </div>
+      <div class="card">
+        <h2 id="t-rev">Where the money came from</h2>
+        <p class="hint" id="rev-hint">By source, over the runway window.</p>
+        <div class="chartbox"><canvas id="c-rev" role="img" aria-label="Income by source"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px" id="hist-card">
+      <h2>Runway history</h2>
+      <p class="hint" id="hist-hint"></p>
+      <div class="chartbox" id="hist-box" hidden><canvas id="c-hist" role="img" aria-label="Cash balance by month-end snapshot"></canvas></div>
+    </div>
+
+    <details class="card" open>
+      <summary>Data checks</summary>
+      <div id="checks"></div>
+    </details>
+
+    <details class="card">
+      <summary>Monthly table</summary>
+      <div class="scroll"><table id="month-table"></table></div>
+    </details>
+
+    <div class="card" style="margin-top:14px">
+      <h2>Clean data export</h2>
+      <p class="hint">One row per transaction. Use it for pivot tables or a Google Sheet. Donor names are left out unless you choose otherwise.</p>
+      <div class="toolbar" style="margin-top:8px">
+        <button id="dl-csv" type="button">Download CSV</button>
+        <button id="dl-csv-names" type="button">Download CSV with names</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>/*VENDOR_XLSX*/</script>
+<script>/*VENDOR_CHART*/</script>
+<script>/*VENDOR_PDF*/</script>
+<script type="text/plain" id="pdf-worker">/*VENDOR_PDF_WORKER*/</script>
+<script>/*CORE*/</script>
+<script>
+(function () {
+  'use strict';
+  var L = window.LLT;
+  var $ = function (id) { return document.getElementById(id); };
+  // ready: dashboard is shown. Click-to-choose builds at once; drag-and-drop waits for both reports.
+  var state = { activity: [], position: null, errors: [], notes: [], ready: false };
+  var charts = {};
+  var LS = { th: 'llt_thresholds', hist: 'llt_cash_history' };
+
+  function lsGet(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
+
+  var money = function (x, d) { return x === null || x === undefined || isNaN(x) ? '–' : (x < 0 ? '-$' : '$') + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); };
+  var mlabel = function (m) { var p = m.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1] - 1] + " '" + p[0].slice(2); };
+  var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var cssv = function (n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); };
+
+  /* ---------- file intake ---------- */
+  function handleRows(rows, file, isPdf) {
+    var kind = L.detectReport(rows);
+    if (kind === 'activity') {
+      if (isPdf) { state.errors.push(file.name + ': the Activity Detail PDF has too many columns to read reliably. Please export this report to Excel instead.'); return; }
+      var a = L.parseActivity(rows, file.name);
+      state.activity = state.activity.filter(function (x) { return x.fileName !== file.name; }).concat([a]);
+    } else if (kind === 'position') {
+      state.position = L.parsePosition(rows, file.name);
+    } else if (kind === 'activity-summary') {
+      state.errors.push(file.name + ': this is the summary "Statement of Activity". Please export the "Statement of Activity Detail" instead.');
+    } else {
+      state.errors.push(file.name + ': not recognized as a QuickBooks Statement of Activity Detail or Statement of Financial Position.');
+    }
+  }
+  var pdfReady = null;
+  function pdfLib() {
+    if (!pdfReady) {
+      var src = document.getElementById('pdf-worker').textContent;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      pdfReady = pdfjsLib;
+    }
+    return pdfReady;
+  }
+  // rebuild text lines from positioned text items (same baseline = same line)
+  function pdfToLines(buf) {
+    return pdfLib().getDocument({ data: new Uint8Array(buf) }).promise.then(function (doc) {
+      var pages = [];
+      for (var p = 1; p <= doc.numPages; p++) pages.push(doc.getPage(p).then(function (pg) { return pg.getTextContent(); }));
+      return Promise.all(pages).then(function (contents) {
+        var lines = [];
+        contents.forEach(function (tc) {
+          var byY = {};
+          tc.items.forEach(function (it) {
+            if (!it.str || !it.str.trim()) return;
+            var y = Math.round(it.transform[5]);
+            var key = byY[y] ? y : byY[y - 1] ? y - 1 : byY[y + 1] ? y + 1 : y;
+            (byY[key] = byY[key] || []).push(it);
+          });
+          Object.keys(byY).map(Number).sort(function (a, b) { return b - a; }).forEach(function (y) {
+            lines.push(byY[y].sort(function (a, b) { return a.transform[4] - b.transform[4]; }).map(function (it) { return it.str.trim(); }).join(' '));
+          });
+        });
+        return lines;
+      });
+    });
+  }
+  function readFile(file) {
+    return new Promise(function (resolve) {
+      var isPdf = /\.pdf$/i.test(file.name);
+      var fr = new FileReader();
+      fr.onload = function () {
+        if (isPdf) {
+          pdfToLines(fr.result).then(function (lines) { handleRows(L.pdfLinesToRows(lines), file, true); })
+            .catch(function (e) { state.errors.push(file.name + ': could not read this PDF (' + e.message + '). Export to Excel or type the cash balance below.'); })
+            .then(resolve);
+          return;
+        }
+        try {
+          var wb = XLSX.read(fr.result, { type: 'array' });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          handleRows(XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null }), file, false);
+        } catch (e) { state.errors.push(file.name + ': ' + e.message); }
+        resolve();
+      };
+      fr.onerror = function () { state.errors.push(file.name + ': could not be read.'); resolve(); };
+      fr.readAsArrayBuffer(file);
+    });
+  }
+  function ingest(list, picked) {
+    state.errors = [];
+    Promise.all(Array.prototype.map.call(list, readFile)).then(function () {
+      if (state.position && state.position.cash !== null) $('cash').value = state.position.cash;
+      if (state.position && state.position.asOf) $('asofin').value = L.ymd(state.position.asOf);
+      if (picked || (state.activity.length && state.position)) state.ready = true;
+      render(true);
+    });
+  }
+
+  var drop = $('drop'), fileIn = $('file');
+  drop.addEventListener('click', function () { fileIn.click(); });
+  drop.addEventListener('keydown', function (e) { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileIn.click(); } });
+  $('btn-go').addEventListener('click', function (e) { e.stopPropagation(); state.ready = true; render(true); });
+  $('btn-add').addEventListener('click', function () { fileIn.click(); });
+  fileIn.addEventListener('change', function () { if (fileIn.files.length) ingest(fileIn.files, true); fileIn.value = ''; });
+  ['dragenter', 'dragover'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'drop' || e.target === document || e.target === drop) drop.classList.remove('over'); }); });
+  document.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files.length) ingest(e.dataTransfer.files, false); });
+  $('btn-reset').addEventListener('click', function () {
+    state.activity = []; state.position = null; state.errors = []; state.ready = false; $('cash').value = ''; $('asofin').value = ''; render(true);
+  });
+
+  var th = lsGet(LS.th, { yellow: 6, red: 3 });
+  $('th-y').value = th.yellow; $('th-r').value = th.red;
+  ['cash', 'asofin', 'th-y', 'th-r'].forEach(function (id) { $(id).addEventListener('change', function () { render(false); }); });
+
+  /* ---------- rendering ---------- */
+  function banner(items, cls) {
+    return items.length ? '<div class="banner ' + (cls || '') + '"><ul>' + items.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></div>' : '';
+  }
+  var ICON = {
+    good: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    warning: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 6.5v3.2M8 11.6v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    critical: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    todo: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2"/></svg>'
+  };
+  var LABEL = { good: 'Healthy', warning: 'Watch', critical: 'Critical' };
+
+  function currentCash() { var v = parseFloat($('cash').value); return isNaN(v) ? null : v; }
+  function currentAsOf() { var v = $('asofin').value; if (!v) return null; var p = v.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+
+  // before the dashboard opens, show which dropped reports are in and which is still missing
+  function renderSlots() {
+    var A = state.activity, P = state.position;
+    var slot = function (done, name, detail) {
+      return '<li class="' + (done ? 'done' : 'todo') + '">' + (done ? ICON.good : ICON.todo) + '<span><b>' + name + '</b> &mdash; ' + esc(detail) + '</span></li>';
+    };
+    $('slots').hidden = !A.length && !P;
+    $('slots').innerHTML =
+      slot(A.length > 0, 'Statement of Activity Detail', A.length ? A.map(function (a) { return a.fileName; }).join(', ') : 'drop it here next') +
+      slot(!!P, 'Statement of Financial Position', P ? P.fileName + (P.asOf ? ' (as of ' + L.ymd(P.asOf) + ')' : '') : 'drop it here next');
+    $('btn-go').hidden = !(A.length && !P);
+  }
+
+  function render(fresh) {
+    var have = state.ready && state.activity.length > 0;
+    $('dash').hidden = !have; $('btn-reset').hidden = !have && !state.position && !state.activity.length;
+    drop.hidden = have;
+    $('btn-add').hidden = !have;
+    renderSlots();
+    var msgs = banner(state.errors, 'err');
+    if (!have) {
+      $('msgs').innerHTML = msgs;
+      $('asof').textContent = state.activity.length ? 'Activity Detail loaded. Now drop the Statement of Financial Position.'
+        : state.position ? 'Financial Position loaded. Now drop the Statement of Activity Detail.' : "Drop this month's QuickBooks exports to begin.";
+      return;
+    }
+
+    th = { yellow: parseFloat($('th-y').value) || 6, red: parseFloat($('th-r').value) || 3 };
+    lsSet(LS.th, th);
+
+    var merged = L.mergeActivity(state.activity);
+    var cash = currentCash(), asOf = currentAsOf();
+    var m = L.computeMetrics(merged.facts, { asOf: asOf, dataEnd: merged.dataEnd, cash: cash, thresholds: th });
+    state.merged = merged; state.metrics = m;
+
+    var warn = [].concat(m.warnings, merged.notes);
+    state.activity.forEach(function (a) { warn = warn.concat(a.warnings.map(function (w) { return a.fileName + ': ' + w; })); });
+    if (state.position) warn = warn.concat(state.position.warnings);
+    if (!state.position && cash === null) warn.push('No Statement of Financial Position loaded. Drop it in, or type the cash balance above to see runway.');
+    $('msgs').innerHTML = msgs + banner(warn);
+
+    $('asof').textContent = 'Through ' + mlabel(m.lastMonth) + ' (last complete month)' + (asOf ? ' · cash as of ' + L.ymd(asOf) : '');
+    $('cash-src').textContent = state.position && state.position.cash !== null && cash === state.position.cash
+      ? 'Cash read from "Total for Bank Accounts" in ' + state.position.fileName + (state.position.accounts.length ? ' (' + state.position.accounts.map(function (a) { return a.name + ' ' + money(a.balance); }).join(', ') + ')' : '') + '.'
+      : 'Type the cash balance if you have no Statement of Financial Position; it should equal "Total for Bank Accounts".';
+
+    saveHistory(asOf, cash);
+    renderKpis(m); renderWindows(m); renderCharts(m); renderChecks(); renderTable(m);
+  }
+
+  function renderKpis(m) {
+    var p = m.primary, n = m.primaryN;
+    var runway = p && p.runway !== null ? p.runway : null;
+    var chip = m.status ? '<span class="chip ' + m.status + '">' + ICON[m.status] + LABEL[m.status] + '</span>' : '';
+    var netTxt = !p ? '–' : money(p.net);
+    var netNote = !p ? '' : (p.net >= 0 ? 'Income covered spending: cash did not shrink' : 'Cash shrinking by this much per month');
+    $('kpis').innerHTML =
+      '<div class="card kpi"><div class="label">Cash on hand</div><div class="value">' + money(m.cash) + '</div><div class="note">Bank accounts, available to spend</div></div>' +
+      '<div class="card kpi"><div class="label">Gross burn / month</div><div class="value">' + (p ? money(p.burn) : '–') + '</div><div class="note">' + (p ? n + '-month average, ' + mlabel(p.from) + ' – ' + mlabel(p.to) : 'Need at least 3 complete months') + '</div></div>' +
+      '<div class="card kpi"><div class="label">Runway</div><div class="value">' + (runway !== null ? runway.toFixed(1) + ' <span style="font-size:16px;font-weight:500">months</span>' : '–') + '</div><div class="note">' + chip + ' <span style="margin-left:6px">if no new income arrives</span></div></div>' +
+      '<div class="card kpi"><div class="label">Net cash flow / month</div><div class="value">' + netTxt + '</div><div class="note">' + (p ? n + '-month average. ' + netNote : '') + '</div></div>';
+  }
+
+  function renderWindows(m) {
+    var h = '<tr><th>Window</th><th>Months</th><th>Gross burn / mo</th><th>Income / mo</th><th>Net / mo</th><th>Runway</th></tr>';
+    [3, 6, 12].forEach(function (n) {
+      var w = m.windows[n];
+      h += w ? '<tr><td>Last ' + n + ' months' + (n === m.primaryN ? ' <b>(headline)</b>' : '') + '</td><td>' + mlabel(w.from) + ' – ' + mlabel(w.to) + '</td><td>' + money(w.burn) + '</td><td>' + money(w.inflow) + '</td><td>' + money(w.net) + '</td><td>' + (w.runway === null ? '–' : w.runway.toFixed(1) + ' mo') + '</td></tr>'
+        : '<tr><td>Last ' + n + ' months</td><td colspan="5" style="text-align:left;color:var(--muted)">Not enough history</td></tr>';
+    });
+    $('win-table').innerHTML = h;
+
+    // lumpy items inside the headline window
+    var out = [];
+    if (m.primaryN) {
+      var ms = m.months.slice(-m.primaryN), tot = {}, best = {}, nz = {};
+      ms.forEach(function (s) { Object.keys(s.accounts).forEach(function (a) { tot[a] = (tot[a] || 0) + s.accounts[a]; if (s.accounts[a] > (best[a] ? best[a].v : 0)) best[a] = { v: s.accounts[a], m: s.month }; if (s.accounts[a] > 0) nz[a] = (nz[a] || 0) + 1; }); });
+      Object.keys(best).forEach(function (a) { if (best[a].v >= 1000 && best[a].v / tot[a] >= 0.4 && nz[a] <= 3) out.push(a + ' ' + money(best[a].v) + ' in ' + mlabel(best[a].m)); });
+    }
+    $('lumpy').textContent = out.length ? 'Large one-off or annual costs in this window: ' + out.join('; ') + '. They raise the 3-month figure more than the 12-month figure.' : '';
+  }
+
+  /* ---------- charts ---------- */
+  function palette() {
+    return {
+      groups: { 'Payroll': cssv('--s-payroll'), 'Software & licenses': cssv('--s-software'), 'Insurance': cssv('--s-insurance'), 'Other': cssv('--s-other') },
+      income: cssv('--s-income'), expense: cssv('--s-expense'), surface: cssv('--surface'), ink: cssv('--ink'), ink2: cssv('--ink-2'), muted: cssv('--muted'), grid: cssv('--grid'), axis: cssv('--axis')
+    };
+  }
+  function base(P) {
+    Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+    Chart.defaults.color = P.ink2;
+    return {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, color: P.ink2, padding: 14 } },
+        tooltip: { backgroundColor: P.surface, titleColor: P.ink, bodyColor: P.ink2, borderColor: P.axis, borderWidth: 1, padding: 10, boxPadding: 4,
+          callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + money(c.parsed.y !== undefined && c.parsed.y !== null && c.chart.options.indexAxis !== 'y' ? c.parsed.y : c.parsed.x); } } } },
+      scales: {
+        x: { grid: { display: false }, border: { color: P.axis }, ticks: { color: P.muted, maxRotation: 0, autoSkip: true } },
+        y: { beginAtZero: true, grid: { color: P.grid }, border: { display: false }, ticks: { color: P.muted, callback: function (v) { return v >= 1000 || v <= -1000 ? '$' + v / 1000 + 'k' : '$' + v; } } }
+      }
+    };
+  }
+  function put(id, cfg) { if (charts[id]) charts[id].destroy(); charts[id] = new Chart($(id), cfg); }
+  function merge(a, b) { Object.keys(b).forEach(function (k) { a[k] = (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && a[k] && typeof a[k] === 'object') ? merge(a[k], b[k]) : b[k]; }); return a; }
+
+  function renderCharts(m) {
+    var P = palette(), labels = m.months.map(function (s) { return mlabel(s.month); });
+    var shown = m.months.length > 24 ? m.months.slice(-24) : m.months; // keep charts readable
+    var off = m.months.length - shown.length;
+    labels = labels.slice(off);
+
+    // 1. spending stack + rolling averages
+    var ds = L.GROUP_ORDER.map(function (g) {
+      return { type: 'bar', label: g, data: shown.map(function (s) { return Math.round(s.groups[g]); }), backgroundColor: P.groups[g], borderColor: P.surface, borderWidth: 2, borderRadius: 3, borderSkipped: false, stack: 's', barPercentage: .75, order: 2 };
+    });
+    ds.push({ type: 'line', label: '3-mo avg burn', stack: 'l3', data: shown.map(function (s) { return s.burn3 === null ? null : Math.round(s.burn3); }), borderColor: P.ink2, borderDash: [5, 4], borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, order: 1, spanGaps: false });
+    ds.push({ type: 'line', label: '12-mo avg burn', stack: 'l12', data: shown.map(function (s) { return s.burn12 === null ? null : Math.round(s.burn12); }), borderColor: P.ink, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 4, order: 1, spanGaps: false });
+    var o1 = base(P); o1.scales.x.stacked = true; o1.scales.y.stacked = true;
+    o1.plugins.tooltip.callbacks.footer = function (items) {
+      var t = 0; items.forEach(function (i) { if (i.dataset.type === 'bar') t += i.parsed.y; }); return 'Total spending: ' + money(t);
+    };
+    put('c-spend', { data: { labels: labels, datasets: ds }, options: o1 });
+
+    // 2. income vs spending
+    var inc = shown.map(function (s) { return Math.round(s.revenue + s.adjustments + s.other); });
+    var o2 = base(P);
+    put('c-flow', { type: 'bar', data: { labels: labels, datasets: [
+      { label: 'Income', data: inc, backgroundColor: P.income, borderColor: P.surface, borderWidth: 2, borderRadius: 3, borderSkipped: false, barPercentage: .85, categoryPercentage: .8 },
+      { label: 'Spending', data: shown.map(function (s) { return Math.round(s.expense); }), backgroundColor: P.expense, borderColor: P.surface, borderWidth: 2, borderRadius: 3, borderSkipped: false, barPercentage: .85, categoryPercentage: .8 }
+    ] }, options: o2 });
+
+    // 3. composition
+    var n = m.primaryN, w = n ? mlabel(m.months[m.months.length - n].month) + ' – ' + mlabel(m.lastMonth) : '';
+    $('t-exp').textContent = 'Where the money went (' + (n || 0) + ' months)'; $('t-rev').textContent = 'Where the money came from (' + (n || 0) + ' months)';
+    var ex = Object.keys(m.composition.expense).map(function (k) { return { k: k, v: m.composition.expense[k] }; }).filter(function (x) { return x.v > 0; }).sort(function (a, b) { return b.v - a.v; });
+    var top = ex.slice(0, 7), rest = ex.slice(7).reduce(function (a, x) { return a + x.v; }, 0);
+    if (rest > 0) top.push({ k: 'All other', v: rest });
+    var o3 = base(P); o3.indexAxis = 'y'; o3.interaction = { mode: 'nearest', intersect: true }; o3.plugins.legend.display = false;
+    o3.scales.x = o3.scales.y; o3.scales.y = { grid: { display: false }, border: { color: P.axis }, ticks: { color: P.ink2 } };
+    o3.plugins.tooltip.callbacks.label = function (c) { var tot = top.reduce(function (a, x) { return a + x.v; }, 0); return ' ' + money(c.parsed.x) + ' (' + Math.round(100 * c.parsed.x / tot) + '%)'; };
+    put('c-exp', { type: 'bar', data: { labels: top.map(function (x) { return x.k; }), datasets: [{ data: top.map(function (x) { return Math.round(x.v); }), backgroundColor: top.map(function (x) { return P.groups[L.groupOf(x.k)] || P.groups.Other; }), borderRadius: 4, borderSkipped: false, barPercentage: .7 }] }, options: o3 });
+
+    var rv = Object.keys(m.composition.revenue).map(function (k) { return { k: k, v: m.composition.revenue[k] }; }).filter(function (x) { return x.v > 0; }).sort(function (a, b) { return b.v - a.v; });
+    var o4 = base(P); o4.indexAxis = 'y'; o4.interaction = { mode: 'nearest', intersect: true }; o4.plugins.legend.display = false;
+    o4.scales.x = o4.scales.y; o4.scales.y = { grid: { display: false }, border: { color: P.axis }, ticks: { color: P.ink2 } };
+    var rtot = rv.reduce(function (a, x) { return a + x.v; }, 0);
+    o4.plugins.tooltip.callbacks.label = function (c) { return ' ' + money(c.parsed.x) + ' (' + Math.round(100 * c.parsed.x / rtot) + '%)'; };
+    put('c-rev', { type: 'bar', data: { labels: rv.map(function (x) { return x.k; }), datasets: [{ data: rv.map(function (x) { return Math.round(x.v); }), backgroundColor: P.income, borderRadius: 4, borderSkipped: false, barPercentage: .7 }] }, options: o4 });
+    var grants = (m.composition.revenue['Grants'] || 0);
+    $('rev-hint').textContent = 'By source, over the runway window. Grants are ' + (rtot ? Math.round(100 * grants / rtot) : 0) + '% of income in this window; check the same share in earlier years before assuming that is normal.';
+
+    renderHistory(P);
+  }
+
+  /* ---------- cash snapshots (browser-local) ---------- */
+  function saveHistory(asOf, cash) {
+    if (!asOf || cash === null) return;
+    var h = lsGet(LS.hist, []), k = L.ymd(asOf);
+    h = h.filter(function (x) { return x.asOf !== k; }); h.push({ asOf: k, cash: cash });
+    h.sort(function (a, b) { return a.asOf < b.asOf ? -1 : 1; }); lsSet(LS.hist, h);
+  }
+  function renderHistory(P) {
+    var h = lsGet(LS.hist, []);
+    if (h.length < 2) {
+      $('hist-box').hidden = true;
+      $('hist-hint').textContent = 'Each month you drop a balance sheet, its cash balance is remembered in this browser. The trend line appears once there are two or more month-ends.' + (h.length ? ' Saved so far: ' + h.length + '.' : '');
+      return;
+    }
+    $('hist-box').hidden = false;
+    $('hist-hint').textContent = 'Cash at each month-end you have loaded on this computer.';
+    var o = base(P); o.plugins.legend.display = false;
+    put('c-hist', { type: 'line', data: { labels: h.map(function (x) { return x.asOf; }), datasets: [{ label: 'Cash', data: h.map(function (x) { return x.cash; }), borderColor: P.groups.Payroll, backgroundColor: P.groups.Payroll, borderWidth: 2, pointRadius: 4, pointBorderColor: P.surface, pointBorderWidth: 2 }] }, options: o });
+  }
+
+  function renderChecks() {
+    var h = '<ul class="files">';
+    state.activity.forEach(function (a) {
+      h += '<li><b>' + esc(a.fileName) + '</b> &mdash; ' + (a.period ? L.ymd(a.period.start) + ' to ' + L.ymd(a.period.end) : 'period unknown') + ', ' + a.rowCount + ' transactions, ' + (a.basis || 'basis unknown') + ' basis';
+      h += '<ul>' + a.checks.map(function (c) { return '<li>' + esc(c.label) + ': computed ' + money(c.computed, 2) + ' vs. report ' + money(c.reported, 2) + ' <span class="' + (c.ok ? 'ok">✓ matches' : 'bad">✕ differs') + '</span></li>'; }).join('') + '</ul></li>';
+    });
+    if (state.position) h += '<li><b>' + esc(state.position.fileName) + '</b> &mdash; as of ' + (state.position.asOf ? L.ymd(state.position.asOf) : '?') + ', cash ' + money(state.position.cash, 2) + (state.position.liabilities !== null ? ', liabilities ' + money(state.position.liabilities, 2) : '') + '</li>';
+    h += '</ul><p class="hint">Months are taken from the most recent export that fully covers them, so overlapping exports are never double-counted. Only complete months feed burn and runway.</p>';
+    $('checks').innerHTML = h;
+  }
+
+  function renderTable(m) {
+    var G = L.GROUP_ORDER;
+    var h = '<tr><th>Month</th>' + G.map(function (g) { return '<th>' + esc(g) + '</th>'; }).join('') + '<th>Total spending</th><th>Income</th><th>Net</th><th>3-mo burn</th><th>12-mo burn</th></tr>';
+    m.months.slice().reverse().forEach(function (s) {
+      h += '<tr><td>' + mlabel(s.month) + '</td>' + G.map(function (g) { return '<td>' + money(s.groups[g]) + '</td>'; }).join('') +
+        '<td>' + money(s.expense) + '</td><td>' + money(s.revenue + s.adjustments + s.other) + '</td><td>' + money(s.net) + '</td><td>' + money(s.burn3) + '</td><td>' + money(s.burn12) + '</td></tr>';
+    });
+    $('month-table').innerHTML = h;
+  }
+
+  function download(name, text) {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
+  $('dl-csv').addEventListener('click', function () { if (state.merged) download('llt_transactions_clean.csv', L.toCSV(state.merged.facts, false)); });
+  $('dl-csv-names').addEventListener('click', function () { if (state.merged) download('llt_transactions_clean_with_names.csv', L.toCSV(state.merged.facts, true)); });
+
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) mq.addEventListener('change', function () { if (state.metrics) render(false); });
+
+  window.__LLT_STATE = state; window.__LLT_INGEST = ingest;
+  render(true);
+})();
+</script>
+</body>
+</html>

@@ -76,6 +76,13 @@ input[type=number], input[type=date] { font: inherit; color: var(--ink); backgro
 .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
 .field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-2); }
 .field input { width: 150px; }
+.inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 28px; }
+.inputs .group + .group { border-left: 1px solid var(--border); padding-left: 28px; }
+.inputs .hint { margin-top: 8px; }
+.group-title { color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+@media (max-width: 760px) { .inputs { grid-template-columns: 1fr; } .inputs .group + .group { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 14px; } }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+.dot.good { background: var(--good); } .dot.warning { background: var(--warn); } .dot.critical { background: var(--crit); }
 .banner { border: 1px solid var(--border); border-left: 4px solid var(--warn); background: var(--surface); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
 .banner.err { border-left-color: var(--crit); }
 .banner ul { margin: 0; padding-left: 18px; }
@@ -155,13 +162,25 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
   <input id="file" type="file" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
 
   <section id="dash" hidden>
-    <div class="card row" style="margin-bottom:14px" id="inputs">
-      <div class="field"><label for="cash">Cash balance ($)</label><input id="cash" type="number" step="0.01" inputmode="decimal"></div>
-      <div class="field"><label for="asofin">As of</label><input id="asofin" type="date"></div>
-      <div class="field"><label for="th-y">Watch below (months)</label><input id="th-y" type="number" min="1" step="0.5" style="width:90px"></div>
-      <div class="field"><label for="th-r">Critical below (months)</label><input id="th-r" type="number" min="0.5" step="0.5" style="width:90px"></div>
-      <div class="hint" id="cash-src" style="flex:1 1 240px"></div>
-      <p class="hint bad" id="th-err" style="flex-basis:100%" hidden>Critical must be lower than Watch, and both above 0. Still using Watch below <span id="th-cur"></span>.</p>
+    <div class="card inputs" style="margin-bottom:14px" id="inputs">
+      <div class="group">
+        <div class="group-title">Cash</div>
+        <div class="row">
+          <div class="field"><label for="cash">Balance ($)</label><input id="cash" type="number" step="0.01" inputmode="decimal"></div>
+          <div class="field"><label for="asofin">As of</label><input id="asofin" type="date"></div>
+        </div>
+        <p class="hint" id="cash-src"></p>
+      </div>
+      <div class="group">
+        <div class="group-title">Runway alert levels</div>
+        <div class="row">
+          <div class="field"><label for="th-y"><span class="dot warning"></span>Watch under (months)</label><input id="th-y" type="number" min="1" step="0.5"></div>
+          <div class="field"><label for="th-r"><span class="dot critical"></span>Critical under (months)</label><input id="th-r" type="number" min="0.5" step="0.5"></div>
+        </div>
+        <p class="hint" id="th-legend"></p>
+        <p class="hint" id="th-def" style="margin-top:2px"></p>
+        <p class="hint bad" id="th-err" hidden>Critical must be lower than Watch, and both above 0. Still using Watch below <span id="th-cur"></span>.</p>
+      </div>
     </div>
 
     <div class="grid kpis" id="kpis"></div>
@@ -420,6 +439,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
     if (thOk) { th = { yellow: ty, red: tr }; lsSet(LS.th, th); }
     $('th-err').hidden = thOk;
     $('th-cur').textContent = th.yellow + ', Critical below ' + th.red;
+    $('th-legend').innerHTML = 'Runway status: <span class="dot good"></span>Healthy ' + th.yellow + '+ mo &middot; <span class="dot warning"></span>Watch ' + th.red + '–' + th.yellow + ' mo &middot; <span class="dot critical"></span>Critical under ' + th.red + ' mo';
     $('th-y').setAttribute('aria-invalid', !thOk); $('th-r').setAttribute('aria-invalid', !thOk);
 
     var merged = L.mergeActivity(state.activity);
@@ -444,13 +464,14 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
   function renderKpis(m) {
     var p = m.primary, n = m.primaryN;
     var runway = p && p.runway !== null ? p.runway : null;
+    $('th-def').innerHTML = '<b>Runway</b> = how long cash lasts at the ' + (n || 12) + '-month average spending if no new income arrives.';
     var chip = m.status ? '<span class="chip ' + m.status + '">' + ICON[m.status] + LABEL[m.status] + '</span>' : '';
     var netTxt = !p ? '–' : money(p.net);
     var netNote = !p ? '' : (p.net >= 0 ? 'Income covered spending: cash did not shrink' : 'Cash shrinking by this much per month');
     $('kpis').innerHTML =
       '<div class="card kpi"><div class="label">Cash on hand</div><div class="value">' + money(m.cash) + '</div><div class="note">Bank accounts, available to spend</div></div>' +
       '<div class="card kpi"><div class="label">Gross burn / month</div><div class="value">' + (p ? money(p.burn) : '–') + '</div><div class="note">' + (p ? n + '-month average, ' + mlabel(p.from) + ' – ' + mlabel(p.to) : 'Need at least 3 complete months') + '</div></div>' +
-      '<div class="card kpi"><div class="label">Runway</div><div class="value">' + (runway !== null ? runway.toFixed(1) + ' <span style="font-size:16px;font-weight:500">months</span>' : '–') + '</div><div class="note">' + chip + ' <span style="margin-left:6px">if no new income arrives</span></div></div>' +
+      '<div class="card kpi"><div class="label">Runway</div><div class="value">' + (runway !== null ? runway.toFixed(1) + ' <span style="font-size:16px;font-weight:500">months</span>' : '–') + '</div><div class="note">' + chip + '</div></div>' +
       '<div class="card kpi"><div class="label">Net cash flow / month</div><div class="value">' + netTxt + '</div><div class="note">' + (p ? n + '-month average. ' + netNote : '') + '</div></div>';
   }
 

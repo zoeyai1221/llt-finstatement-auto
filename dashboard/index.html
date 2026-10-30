@@ -76,6 +76,8 @@ input[type=number], input[type=date] { font: inherit; color: var(--ink); backgro
 .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
 .field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-2); }
 .field input { width: 150px; }
+.legend-tip { text-align: center; color: var(--muted); font-size: 11.5px; margin: 2px 0 0; }
+.chartbox[hidden] + .legend-tip { display: none; }
 .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 28px; }
 .inputs .group + .group { border-left: 1px solid var(--border); padding-left: 28px; }
 .inputs .hint { margin-top: 8px; }
@@ -197,11 +199,13 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
         <h2>Monthly spending</h2>
         <p class="hint">Stacked bars by cost type, with 3- and 12-month averages (the average lines are the burn rate).</p>
         <div class="chartbox tall"><canvas id="c-spend" role="img" aria-label="Monthly spending by cost type with rolling averages"></canvas></div>
+        <p class="legend-tip">(Click an item to hide or show it)</p>
       </div>
       <div class="card">
         <h2>Income vs. spending</h2>
         <p class="hint">Where money comes in lumps and where it only goes out.</p>
         <div class="chartbox tall"><canvas id="c-flow" role="img" aria-label="Monthly income versus spending"></canvas></div>
+        <p class="legend-tip">(Click an item to hide or show it)</p>
       </div>
     </div>
 
@@ -222,6 +226,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
       <h2>Runway history</h2>
       <p class="hint" id="hist-hint"></p>
       <div class="chartbox" id="hist-box" hidden><canvas id="c-hist" role="img" aria-label="Estimated runway at each month-end, with Watch and Critical thresholds"></canvas></div>
+      <p class="legend-tip">(Click an item to hide or show it)</p>
       <p id="hist-proj" style="margin:10px 0 0" hidden></p>
     </div>
 
@@ -905,7 +910,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return {
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, color: P.ink2, padding: 14 } },
+      // legend items toggle their series; the pointer cursor and the .legend-tip line make that discoverable
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, color: P.ink2, padding: 14 },
+          onHover: function (e) { e.native.target.style.cursor = 'pointer'; }, onLeave: function (e) { e.native.target.style.cursor = ''; } },
         tooltip: { backgroundColor: P.surface, titleColor: P.ink, bodyColor: P.ink2, borderColor: P.axis, borderWidth: 1, padding: 10, boxPadding: 4,
           callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + money(c.parsed.y !== undefined && c.parsed.y !== null && c.chart.options.indexAxis !== 'y' ? c.parsed.y : c.parsed.x); } } } },
       scales: {

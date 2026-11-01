@@ -939,6 +939,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   }
 
   /* ---------- Statement of Financial Position ---------- */
+  var BANK_TOTAL = /^Total (for )?Bank Accounts$/i;
   function parsePosition(rows, fileName) {
     var warnings = [], asOf = null, cash = null, liabilities = null, accounts = [], restricted = false;
     for (var i = 0; i < rows.length; i++) {
@@ -947,23 +948,25 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       if (!asOf && /^as of/i.test(label)) asOf = parseLongDate(label);
       if (/restricted/i.test(label)) restricted = true;
       var nums = cells.slice(1).map(num).filter(function (x) { return x !== null; });
-      var val = nums.length ? nums[nums.length - 1] : null;
-      if (/^Total for Bank Accounts$/i.test(label) && val !== null) cash = val;
-      if (/^Total for Liabilities$/i.test(label) && val !== null) liabilities = val;
+      // Excel floats like 67317.17000000001 are rounded back to cents
+      var val = nums.length ? Math.round(nums[nums.length - 1] * 100) / 100 : null;
+      // PDF exports say "Total for Bank Accounts", Excel exports "Total Bank Accounts"
+      if (BANK_TOTAL.test(label) && val !== null) cash = val;
+      if (/^Total (for )?Liabilities$/i.test(label) && val !== null) liabilities = val;
     }
     if (cash !== null) {
       var inBank = false;
       for (var k = 0; k < rows.length; k++) {
         var l2 = cellText(rows[k] && rows[k][0]);
         if (/^Bank Accounts$/i.test(l2)) { inBank = true; continue; }
-        if (/^Total for Bank Accounts$/i.test(l2)) break;
+        if (BANK_TOTAL.test(l2)) break;
         if (inBank && l2) {
           var ns = (rows[k] || []).slice(1).map(num).filter(function (x) { return x !== null; });
-          if (ns.length) accounts.push({ name: l2, balance: ns[ns.length - 1] });
+          if (ns.length) accounts.push({ name: l2, balance: Math.round(ns[ns.length - 1] * 100) / 100 });
         }
       }
     } else {
-      warnings.push('Could not find "Total for Bank Accounts". Enter the cash balance manually.');
+      warnings.push('Could not find the "Total Bank Accounts" line. Enter the cash balance manually.');
     }
     if (!asOf) warnings.push('Could not read the "As of" date.');
     if (restricted) warnings.push('The report mentions restricted funds. Subtract any restricted cash before reading the runway.');
@@ -1316,8 +1319,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
     $('asof').textContent = 'Through ' + mlabel(m.lastMonth) + ' (last complete month)' + (asOf ? ' · cash as of ' + L.ymd(asOf) : '');
     $('cash-src').textContent = state.position && state.position.cash !== null && cash === state.position.cash
-      ? 'Cash read from "Total for Bank Accounts" in ' + state.position.fileName + (state.position.accounts.length ? ' (' + state.position.accounts.map(function (a) { return a.name + ' ' + money(a.balance); }).join(', ') + ')' : '') + '.'
-      : 'Type the cash balance if you have no Statement of Financial Position; it should equal "Total for Bank Accounts".';
+      ? 'Cash read from the "Total Bank Accounts" line in ' + state.position.fileName + (state.position.accounts.length ? ' (' + state.position.accounts.map(function (a) { return a.name + ' ' + money(a.balance); }).join(', ') + ')' : '') + '.'
+      : 'Type the cash balance if you have no Statement of Financial Position; it should equal the "Total Bank Accounts" line.';
 
     renderKpis(m); renderWindows(m); renderCharts(m); renderTable(m);
   }

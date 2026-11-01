@@ -517,8 +517,8 @@ button[aria-busy="true"] { cursor: progress; opacity: .7; }
 
     $('asof').textContent = 'Through ' + mlabel(m.lastMonth) + ' (last complete month)' + (asOf ? ' · cash as of ' + L.ymd(asOf) : '');
     $('cash-src').textContent = state.position && state.position.cash !== null && cash === state.position.cash
-      ? 'Cash read from "Total for Bank Accounts" in ' + state.position.fileName + (state.position.accounts.length ? ' (' + state.position.accounts.map(function (a) { return a.name + ' ' + money(a.balance); }).join(', ') + ')' : '') + '.'
-      : 'Type the cash balance if you have no Statement of Financial Position; it should equal "Total for Bank Accounts".';
+      ? 'Cash read from the "Total Bank Accounts" line in ' + state.position.fileName + (state.position.accounts.length ? ' (' + state.position.accounts.map(function (a) { return a.name + ' ' + money(a.balance); }).join(', ') + ')' : '') + '.'
+      : 'Type the cash balance if you have no Statement of Financial Position; it should equal the "Total Bank Accounts" line.';
 
     renderKpis(m); renderWindows(m); renderCharts(m); renderTable(m);
   }

@@ -3,5 +3,6 @@
 *.pdf
 *.doc
 *.docx
+*.csv
 .claude/
 .DS_Store

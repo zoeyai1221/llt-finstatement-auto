@@ -125,6 +125,52 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
 #check-sum svg { width: 14px; height: 14px; flex: none; }
 .files li { margin: 2px 0; }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Download report menu */
+.menu { position: relative; }
+.menu-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: 260px; display: grid; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.14); }
+.menu-list button { display: block; width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 8px 10px; }
+.menu-list button b { font-weight: 600; }
+.menu-list button .hint { display: block; margin: 1px 0 0; }
+@media (max-width: 520px) { .menu-list { right: auto; left: 0; } }
+/* tinted outline: colored like Reports but lighter, so the filled Reports stays the main action */
+#btn-dl { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px 6px 12px; font-weight: 600; color: var(--s-payroll); border-color: var(--s-payroll); background: var(--surface); background: color-mix(in srgb, var(--s-payroll) 9%, var(--surface)); }
+#btn-dl:hover { background: color-mix(in srgb, var(--s-payroll) 16%, var(--surface)); }
+#btn-dl svg { width: 16px; height: 16px; flex: none; }
+#btn-dl .caret { display: inline-flex; padding-left: 7px; margin-left: 1px; border-left: 1px solid color-mix(in srgb, currentColor 35%, transparent); }
+#btn-dl .caret svg { width: 14px; height: 14px; transition: transform .15s; }
+#btn-dl[aria-expanded="true"] .caret svg { transform: rotate(180deg); }
+button[aria-busy="true"] { cursor: progress; opacity: .7; }
+.print-only, .print-chart { display: none; }
+@page { margin: 0.5in; }
+@media print {
+  /* always print light, even when the screen is in dark mode (beats both dark-mode rules) */
+  :root:not(#_print) {
+    color-scheme: light;
+    --page: #ffffff; --surface: #ffffff; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.14); --wash: #f0efec;
+    --good-text: #006300; --warn-text: #7a5300; --crit-text: #a52626;
+  }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; font-size: 12px; }
+  .wrap { max-width: none; padding: 0; }
+  header.top { margin-bottom: 10px; }
+  header.top .toolbar, #drop, #inputs, #export-card, .legend-tip { display: none !important; }
+  .print-only { display: block; }
+  #print-summary { margin: 0 0 12px; }
+  .card { break-inside: avoid; padding: 12px 14px; }
+  .kpis { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi .value { font-size: 24px; }
+  .two { grid-template-columns: 1fr; }
+  .chartbox, .chartbox.tall { height: auto; }
+  .chartbox canvas { display: none !important; }
+  .print-chart { display: block; width: 100%; height: auto; }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  .scroll { overflow: visible; }
+  table { font-size: 10.5px; }
+  th, td { padding: 4px 6px; }
+  th { white-space: normal; }
+}
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 [hidden] { display: none !important; }
 </style>
@@ -138,6 +184,13 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
     </div>
     <div class="toolbar">
       <button id="btn-reports" class="primary" type="button" hidden>Reports&hellip;</button>
+      <div class="menu" id="dl-wrap" hidden>
+        <button id="btn-dl" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="dl-menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7l3.2 3.2L11.2 7M3 12.5h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Download report</span><span class="caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+        <div class="menu-list" id="dl-menu" role="menu" aria-labelledby="btn-dl" hidden>
+          <button type="button" role="menuitem" data-fmt="pdf"><b>PDF</b><span class="hint">For printing or email.</span></button>
+          <button type="button" role="menuitem" data-fmt="pptx"><b>PowerPoint (.pptx)</b><span class="hint">For board or team meetings. One chart per slide.</span></button>
+        </div>
+      </div>
       <button id="btn-reset" type="button" hidden>Start over</button>
     </div>
   </header>
@@ -164,6 +217,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
   <input id="file" type="file" accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
 
   <section id="dash" hidden>
+    <p class="hint print-only" id="print-summary"></p>
     <div class="card inputs" style="margin-bottom:14px" id="inputs">
       <div class="group">
         <div class="group-title">Cash</div>
@@ -240,7 +294,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
       <div class="scroll"><table id="month-table"></table></div>
     </details>
 
-    <div class="card" style="margin-top:14px">
+    <div class="card" style="margin-top:14px" id="export-card">
       <h2>Clean data export</h2>
       <p class="hint">One row per transaction. Use it for pivot tables or a Google Sheet. Donor names are left out unless you choose otherwise.</p>
       <div class="toolbar" style="margin-top:8px">
@@ -254,6 +308,8 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
 <script>/*VENDOR_XLSX*/</script>
 <script>/*VENDOR_CHART*/</script>
 <script>/*VENDOR_PDF*/</script>
+<script>/*VENDOR_PPTX*/</script>
+<script>/*VENDOR_JSPDF*/</script>
 <script type="text/plain" id="pdf-worker">/*VENDOR_PDF_WORKER*/</script>
 <script>/*CORE*/</script>
 <script>
@@ -427,6 +483,7 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
     $('btn-reports').hidden = !have;
     $('btn-reports').textContent = 'Reports (' + (state.activity.length + (state.position ? 1 : 0)) + ')…';
     if (dlg.open) renderReports();
+    $('dl-wrap').hidden = !have; if (!have) menu(false);
     $('dash').hidden = !have; $('btn-reset').hidden = !have && !state.position && !state.activity.length;
     drop.hidden = have;
     renderSlots();
@@ -466,28 +523,41 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
     renderKpis(m); renderWindows(m); renderCharts(m); renderTable(m);
   }
 
-  function renderKpis(m) {
+  // plain-text KPI tiles, shared by the dashboard and the PowerPoint export
+  function kpiList(m) {
     var p = m.primary, n = m.primaryN;
     var runway = p && p.runway !== null ? p.runway : null;
-    $('th-def').innerHTML = '<b>Runway</b> = how long cash lasts at the ' + (n || 12) + '-month average spending if no new income arrives.';
-    var chip = m.status ? '<span class="chip ' + m.status + '">' + ICON[m.status] + LABEL[m.status] + '</span>' : '';
-    var netTxt = !p ? '–' : money(p.net);
     var netNote = !p ? '' : (p.net >= 0 ? 'Income covered spending: cash did not shrink' : 'Cash shrinking by this much per month');
-    $('kpis').innerHTML =
-      '<div class="card kpi"><div class="label">Cash on hand</div><div class="value">' + money(m.cash) + '</div><div class="note">Bank accounts, available to spend</div></div>' +
-      '<div class="card kpi"><div class="label">Gross burn / month</div><div class="value">' + (p ? money(p.burn) : '–') + '</div><div class="note">' + (p ? n + '-month average, ' + mlabel(p.from) + ' – ' + mlabel(p.to) : 'Need at least 3 complete months') + '</div></div>' +
-      '<div class="card kpi"><div class="label">Runway</div><div class="value">' + (runway !== null ? runway.toFixed(1) + ' <span style="font-size:16px;font-weight:500">months</span>' : '–') + '</div><div class="note">' + chip + '</div></div>' +
-      '<div class="card kpi"><div class="label">Net cash flow / month</div><div class="value">' + netTxt + '</div><div class="note">' + (p ? n + '-month average. ' + netNote : '') + '</div></div>';
+    return [
+      { label: 'Cash on hand', value: money(m.cash), note: 'Bank accounts, available to spend' },
+      { label: 'Gross burn / month', value: p ? money(p.burn) : '–', note: p ? n + '-month average, ' + mlabel(p.from) + ' – ' + mlabel(p.to) : 'Need at least 3 complete months' },
+      { label: 'Runway', value: runway !== null ? runway.toFixed(1) : '–', unit: runway !== null ? 'months' : '', status: m.status, note: m.status ? LABEL[m.status] : '' },
+      { label: 'Net cash flow / month', value: p ? money(p.net) : '–', note: p ? n + '-month average. ' + netNote : '' }
+    ];
+  }
+  function renderKpis(m) {
+    $('th-def').innerHTML = '<b>Runway</b> = how long cash lasts at the ' + (m.primaryN || 12) + '-month average spending if no new income arrives.';
+    $('kpis').innerHTML = kpiList(m).map(function (k) {
+      var note = k.status ? '<span class="chip ' + k.status + '">' + ICON[k.status] + LABEL[k.status] + '</span>' : k.label === 'Runway' ? '' : k.note;
+      return '<div class="card kpi"><div class="label">' + k.label + '</div><div class="value">' + k.value + (k.unit ? ' <span style="font-size:16px;font-weight:500">' + k.unit + '</span>' : '') + '</div><div class="note">' + note + '</div></div>';
+    }).join('');
   }
 
-  function renderWindows(m) {
-    var h = '<tr><th>Window</th><th>Months</th><th>Gross burn / mo</th><th>Income / mo</th><th>Net / mo</th><th>Runway</th></tr>';
-    [3, 6, 12].forEach(function (n) {
+  var WIN_HEAD = ['Window', 'Months', 'Gross burn / mo', 'Income / mo', 'Net / mo', 'Runway'];
+  // one row per window; a 2-cell row means not enough history
+  function windowRows(m) {
+    return [3, 6, 12].map(function (n) {
       var w = m.windows[n];
-      h += w ? '<tr><td>Last ' + n + ' months' + (n === m.primaryN ? ' <b>(headline)</b>' : '') + '</td><td>' + mlabel(w.from) + ' – ' + mlabel(w.to) + '</td><td>' + money(w.burn) + '</td><td>' + money(w.inflow) + '</td><td>' + money(w.net) + '</td><td>' + (w.runway === null ? '–' : w.runway.toFixed(1) + ' mo') + '</td></tr>'
-        : '<tr><td>Last ' + n + ' months</td><td colspan="5" style="text-align:left;color:var(--muted)">Not enough history</td></tr>';
+      return w ? ['Last ' + n + ' months' + (n === m.primaryN ? ' (headline)' : ''), mlabel(w.from) + ' – ' + mlabel(w.to), money(w.burn), money(w.inflow), money(w.net), w.runway === null ? '–' : w.runway.toFixed(1) + ' mo']
+        : ['Last ' + n + ' months', 'Not enough history'];
     });
-    $('win-table').innerHTML = h;
+  }
+  function renderWindows(m) {
+    $('win-table').innerHTML = '<tr>' + WIN_HEAD.map(function (c) { return '<th>' + c + '</th>'; }).join('') + '</tr>' +
+      windowRows(m).map(function (r) {
+        return r.length === 2 ? '<tr><td>' + r[0] + '</td><td colspan="5" style="text-align:left;color:var(--muted)">' + r[1] + '</td></tr>'
+          : '<tr>' + r.map(function (c) { return '<td>' + c.replace(' (headline)', ' <b>(headline)</b>') + '</td>'; }).join('') + '</tr>';
+      }).join('');
 
     // lumpy items inside the headline window
     var out = [];
@@ -503,12 +573,14 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
   function palette() {
     return {
       groups: { 'Payroll': cssv('--s-payroll'), 'Software & licenses': cssv('--s-software'), 'Insurance': cssv('--s-insurance'), 'Other': cssv('--s-other') },
+      status: { good: cssv('--good-text'), warning: cssv('--warn-text'), critical: cssv('--crit-text') }, wash: cssv('--wash'),
       income: cssv('--s-income'), expense: cssv('--s-expense'), surface: cssv('--surface'), ink: cssv('--ink'), ink2: cssv('--ink-2'), muted: cssv('--muted'), grid: cssv('--grid'), axis: cssv('--axis')
     };
   }
   function base(P) {
     Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
     Chart.defaults.color = P.ink2;
+    Chart.defaults.font.size = exp ? exp.font : 12;
     return {
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
@@ -523,7 +595,21 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
       }
     };
   }
-  function put(id, cfg) { if (charts[id]) charts[id].destroy(); charts[id] = new Chart($(id), cfg); }
+  // exp is set while charts are drawn off-screen as images for a report; the on-screen charts are left alone
+  var exp = null;
+  function put(id, cfg) {
+    if (exp) {
+      var sz = exp.size[id], c = document.createElement('canvas');
+      c.width = sz[0]; c.height = sz[1]; c.style.width = sz[0] + 'px'; c.style.height = sz[1] + 'px';
+      exp.box.appendChild(c);
+      cfg.options.responsive = false; cfg.options.devicePixelRatio = exp.dpr;
+      var ch = new Chart(c, cfg);
+      exp.out[id] = { src: ch.toBase64Image('image/png'), w: sz[0], h: sz[1] };
+      ch.destroy(); c.remove();
+      return;
+    }
+    if (charts[id]) charts[id].destroy(); charts[id] = new Chart($(id), cfg);
+  }
   function merge(a, b) { Object.keys(b).forEach(function (k) { a[k] = (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && a[k] && typeof a[k] === 'object') ? merge(a[k], b[k]) : b[k]; }); return a; }
 
   function renderCharts(m) {
@@ -655,14 +741,19 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
     return bad;
   }
 
-  function renderTable(m) {
+  // newest month first; [header].concat(rows), shared by the dashboard and the PowerPoint export
+  function monthRows(m) {
     var G = L.GROUP_ORDER;
-    var h = '<tr><th>Month</th>' + G.map(function (g) { return '<th>' + esc(g) + '</th>'; }).join('') + '<th>Total spending</th><th>Income</th><th>Net</th><th>3-mo burn</th><th>12-mo burn</th></tr>';
-    m.months.slice().reverse().forEach(function (s) {
-      h += '<tr><td>' + mlabel(s.month) + '</td>' + G.map(function (g) { return '<td>' + money(s.groups[g]) + '</td>'; }).join('') +
-        '<td>' + money(s.expense) + '</td><td>' + money(s.revenue + s.adjustments + s.other) + '</td><td>' + money(s.net) + '</td><td>' + money(s.burn3) + '</td><td>' + money(s.burn12) + '</td></tr>';
-    });
-    $('month-table').innerHTML = h;
+    return [['Month'].concat(G, ['Total spending', 'Income', 'Net', '3-mo burn', '12-mo burn'])].concat(m.months.slice().reverse().map(function (s) {
+      return [mlabel(s.month)].concat(G.map(function (g) { return money(s.groups[g]); }), [money(s.expense), money(s.revenue + s.adjustments + s.other), money(s.net), money(s.burn3), money(s.burn12)]);
+    }));
+  }
+  function renderTable(m) {
+    var rows = monthRows(m);
+    $('month-table').innerHTML = rows.map(function (r, i) {
+      var tag = i ? 'td' : 'th';
+      return '<tr>' + r.map(function (c) { return '<' + tag + '>' + esc(c) + '</' + tag + '>'; }).join('') + '</tr>';
+    }).join('');
   }
 
   function download(name, text) {
@@ -670,6 +761,340 @@ button.rm:disabled { opacity: .4; cursor: not-allowed; }
   }
   $('dl-csv').addEventListener('click', function () { if (state.merged) download('llt_transactions_clean.csv', L.toCSV(state.merged.facts, false)); });
   $('dl-csv-names').addEventListener('click', function () { if (state.merged) download('llt_transactions_clean_with_names.csv', L.toCSV(state.merged.facts, true)); });
+
+  /* ---------- download report: PDF (print) and PowerPoint ---------- */
+  var dlBtn = $('btn-dl'), dlMenu = $('dl-menu');
+  function menu(open) { dlMenu.hidden = !open; dlBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+  dlBtn.addEventListener('click', function (e) {
+    e.stopPropagation(); menu(dlMenu.hidden);
+    if (!dlMenu.hidden) dlMenu.querySelector('button').focus();
+  });
+  document.addEventListener('click', function (e) { if (!dlMenu.hidden && !dlMenu.contains(e.target)) menu(false); });
+  dlMenu.addEventListener('keydown', function (e) {
+    var items = [].slice.call(dlMenu.querySelectorAll('button')), i = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') { menu(false); dlBtn.focus(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+    else if (e.key === 'Tab') menu(false);
+  });
+  dlMenu.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-fmt]');
+    if (!b) return;
+    menu(false);
+    if (b.dataset.fmt === 'pdf') runExport('PDF', buildPdf); else runExport('PowerPoint', buildPptx);
+  });
+
+  // draw every chart off-screen in the light theme (reports are read on white paper and slides)
+  function chartImages(size, dpr, font) {
+    var root = document.documentElement, prev = root.getAttribute('data-theme'), box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:-99999px;top:0';
+    document.body.appendChild(box);
+    root.setAttribute('data-theme', 'light'); // synchronous, so the screen never repaints in light
+    exp = { size: size, dpr: dpr, font: font, box: box, out: {}, P: palette() };
+    try { renderCharts(state.metrics); return exp; }
+    finally {
+      exp = null; box.remove();
+      if (prev === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', prev);
+      Chart.defaults.font.size = 12; Chart.defaults.color = cssv('--ink-2');
+    }
+  }
+  function reportName(m) { return 'LLT Financial Health Report ' + m.lastMonth; }
+  function throughText(m) { var a = currentAsOf(); return 'Through ' + mlabel(m.lastMonth) + ' (last complete month)' + (a ? ' · cash as of ' + L.ymd(a) : ''); }
+  function today() { return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+  // the inputs card is not printed, so the assumptions behind every number are stated in one line
+  function assumptions(m) {
+    var cash = currentCash(), th = m.thresholds, pos = state.position;
+    var src = pos && pos.cash !== null && cash === pos.cash ? 'from ' + pos.fileName : 'entered by hand';
+    return 'Cash ' + money(cash) + ' (' + src + ') · Runway status: Healthy ' + th.yellow + '+ mo, Watch ' + th.red + '–' + th.yellow + ' mo, Critical under ' + th.red + ' mo · Report generated ' + today();
+  }
+  function textOf(id) { return $(id).hidden ? '' : $(id).textContent.trim(); }
+
+  // PDF: the browser's print dialog ("Save as PDF"). Charts are swapped for print-sized light images.
+  var printing = null;
+  function preparePrint() {
+    if (printing || !state.metrics || $('dash').hidden) return Promise.resolve();
+    var W = 700, e = chartImages({ 'c-spend': [W, 300], 'c-flow': [W, 300], 'c-exp': [W, 260], 'c-rev': [W, 260], 'c-hist': [W, 260] }, 3, 11);
+    var imgs = Object.keys(e.out).map(function (id) {
+      var im = document.createElement('img');
+      im.className = 'print-chart'; im.src = e.out[id].src; im.alt = $(id).getAttribute('aria-label');
+      $(id).parentNode.appendChild(im);
+      return im;
+    });
+    printing = { title: document.title, open: [].map.call(document.querySelectorAll('#dash details'), function (d) { var o = d.open; d.open = true; return [d, o]; }) };
+    document.title = reportName(state.metrics);
+    $('print-summary').textContent = assumptions(state.metrics);
+    return Promise.all(imgs.map(function (im) { return im.decode ? im.decode().catch(function () {}) : null; }));
+  }
+  function endPrint() {
+    if (!printing) return;
+    [].forEach.call(document.querySelectorAll('.print-chart'), function (im) { im.remove(); });
+    printing.open.forEach(function (p) { p[0].open = p[1]; });
+    document.title = printing.title; printing = null;
+  }
+  // Cmd/Ctrl+P prints a report layout too (the menu's PDF option downloads a generated file instead)
+  window.addEventListener('beforeprint', preparePrint);
+  window.addEventListener('afterprint', endPrint);
+
+  // both downloads: show progress on the button, build, save; failures go to the top banner
+  function runExport(what, build) {
+    if (!state.metrics || dlBtn.getAttribute('aria-busy')) return;
+    var lbl = dlBtn.querySelector('.lbl');
+    dlBtn.setAttribute('aria-busy', 'true'); lbl.textContent = 'Preparing…';
+    var done = function () { dlBtn.removeAttribute('aria-busy'); lbl.textContent = 'Download report'; };
+    var fail = function (err) { done(); $('msgs').insertAdjacentHTML('afterbegin', banner(['Could not create the ' + what + ' file: ' + (err && err.message || err) + '.'], 'err')); };
+    // let the button repaint before the synchronous build
+    setTimeout(function () {
+      try { Promise.resolve(build()).then(done, fail); } catch (err) { fail(err); }
+    }, 30);
+  }
+  var hintIn = function (id) { return $(id).closest('.card').querySelector('.hint').textContent.trim(); };
+  var titleIn = function (id) { return $(id).closest('.card').querySelector('h2').textContent.trim(); };
+  // what every number was checked against, as plain lines: kind is file | ok | bad | head | warn
+  function checkLines() {
+    var out = [];
+    state.activity.forEach(function (a) {
+      out.push({ kind: 'file', t: a.fileName + ' — ' + (a.period ? L.ymd(a.period.start) + ' to ' + L.ymd(a.period.end) : 'period unknown') + ', ' + a.rowCount + ' transactions, ' + (a.basis || 'basis unknown') + ' basis' });
+      a.checks.forEach(function (c) { out.push({ kind: c.ok ? 'ok' : 'bad', t: c.label + ': computed ' + money(c.computed, 2) + ' vs. report ' + money(c.reported, 2) + (c.ok ? ' (matches)' : ' (differs)') }); });
+    });
+    var pos = state.position;
+    if (pos) out.push({ kind: 'file', t: pos.fileName + ' — as of ' + (pos.asOf ? L.ymd(pos.asOf) : '?') + ', cash ' + money(pos.cash, 2) });
+    var warns = [].map.call($('msgs').querySelectorAll('li'), function (li) { return li.textContent; });
+    if (warns.length) { out.push({ kind: 'head', t: 'Warnings' }); warns.forEach(function (w) { out.push({ kind: 'warn', t: w }); }); }
+    return out;
+  }
+
+  // PDF: Letter portrait, real (selectable) text and tables, charts as images
+  function buildPdf() {
+    var m = state.metrics, doc = new jspdf.jsPDF({ unit: 'pt', format: 'letter' });
+    var PW = 612, PH = 792, M = 40, CW = PW - 2 * M, BOTTOM = PH - 52, y = M;
+    var e = chartImages({ 'c-spend': [760, 340], 'c-flow': [760, 340], 'c-exp': [760, 330], 'c-rev': [760, 330], 'c-hist': [760, 300] }, 3, 12);
+    var P = e.P, INK = P.ink, INK2 = P.ink2, MUTED = P.muted, GRID = P.grid, WASH = P.wash;
+    var col = function (c) { return c.slice(0, 7); };
+    // the built-in PDF fonts cover Windows-1252 only
+    var clean = function (s) { return String(s).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[✓✔]/g, 'OK').replace(/[✕✗]/g, 'X').replace(/…/g, '...'); };
+    var font = function (size, bold, color) { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(col(color || INK)); };
+    var need = function (h) { if (y + h > BOTTOM) { doc.addPage(); y = M; return true; } return false; };
+    var wrap = function (s, size, w, bold) { font(size, bold); return doc.splitTextToSize(clean(s), w || CW); };
+    var txt = function (s, o) {
+      o = o || {}; if (!s) return;
+      var size = o.size || 10, lines = wrap(s, size, o.w, o.bold), lh = size * 1.3;
+      need(lines.length * lh);
+      font(size, o.bold, o.color);
+      doc.text(lines, o.x || M, y, { baseline: 'top', lineHeightFactor: 1.3 });
+      y += lines.length * lh + (o.after === undefined ? 4 : o.after);
+    };
+    var heading = function (s, keep) { need(keep || 60); txt(s, { size: 13, bold: true, after: 3 }); };
+    // rows[0] is the header; cells are strings or {t, bold, color, span}
+    var table = function (rows, colW, size) {
+      var pad = 4, rh = size * 2;
+      var drawHead = function () {
+        var hl = rows[0].map(function (c, j) { return wrap(c, size, colW[j] - 2 * pad, true); });
+        var hh = Math.max.apply(null, hl.map(function (l) { return l.length; })) * size * 1.2 + 2 * pad;
+        need(hh + rh);
+        doc.setFillColor(col(WASH)); doc.rect(M, y, CW, hh, 'F');
+        font(size, true, INK2);
+        var x = M;
+        hl.forEach(function (l, j) {
+          doc.text(l, j ? x + colW[j] - pad : x + pad, y + pad, { baseline: 'top', align: j ? 'right' : 'left', lineHeightFactor: 1.2 });
+          x += colW[j];
+        });
+        y += hh;
+      };
+      drawHead();
+      rows.slice(1).forEach(function (r) {
+        if (need(rh)) drawHead();
+        var x = M;
+        r.forEach(function (c, j) {
+          if (typeof c === 'string') c = { t: c };
+          var w = c.span ? colW.slice(j, j + c.span).reduce(function (a, b) { return a + b; }, 0) : colW[j];
+          font(size, c.bold, c.color || INK);
+          var right = j && !c.left;
+          doc.text(clean(c.t), right ? x + w - pad : x + pad, y + rh / 2, { baseline: 'middle', align: right ? 'right' : 'left' });
+          x += w;
+        });
+        doc.setDrawColor(col(GRID)); doc.setLineWidth(0.5); doc.line(M, y + rh, M + CW, y + rh);
+        y += rh;
+      });
+      y += 8;
+    };
+    var chart = function (id, title, sub, note) {
+      var img = e.out[id];
+      if (!img) return;
+      var h = CW * img.h / img.w, subL = wrap(sub, 9).length, noteL = note ? wrap(note, 8).length : 0;
+      need(13 * 1.3 + 3 + subL * 9 * 1.3 + 8 + h + (noteL ? noteL * 8 * 1.3 + 4 : 0));
+      txt(title, { size: 13, bold: true, after: 3 });
+      txt(sub, { size: 9, color: INK2, after: 8 });
+      doc.addImage(img.src, 'PNG', M, y, CW, h, undefined, 'FAST');
+      y += h + 4;
+      if (note) txt(note, { size: 8, color: MUTED });
+      y += 18;
+    };
+
+    // page 1: header, KPIs, outlook, windows
+    txt("Ladies Let's Talk", { size: 11, bold: true, color: P.groups['Payroll'], after: 2 });
+    txt('Financial Health Report', { size: 22, bold: true, after: 4 });
+    txt(throughText(m), { size: 10, color: INK2, after: 2 });
+    txt(assumptions(m), { size: 8, color: MUTED, after: 14 });
+
+    var k = kpiList(m), gap = 10, bw = (CW - 3 * gap) / 4, bh = 84;
+    k.forEach(function (t, i) {
+      var x = M + i * (bw + gap), c = t.status ? P.status[t.status] : INK;
+      doc.setDrawColor(col(GRID)); doc.setLineWidth(0.8); doc.roundedRect(x, y, bw, bh, 6, 6, 'S');
+      font(7.5, false, INK2); doc.text(t.label.toUpperCase(), x + 9, y + 9, { baseline: 'top' });
+      font(18, true, c); doc.text(clean(t.value), x + 9, y + 23, { baseline: 'top' });
+      if (t.unit) { var vw = doc.getTextWidth(t.value); font(10, false, c); doc.text(t.unit, x + 9 + vw + 3, y + 30, { baseline: 'top' }); }
+      font(7.5, !!t.status, t.status ? c : INK2);
+      doc.text(doc.splitTextToSize(clean(t.note), bw - 18).slice(0, 3), x + 9, y + 50, { baseline: 'top', lineHeightFactor: 1.25 });
+    });
+    y += bh + 14;
+    txt(textOf('hist-proj'), { size: 11, after: 3 });
+    txt(textOf('th-def'), { size: 9, color: INK2, after: 16 });
+
+    heading('Runway by averaging window');
+    txt(hintIn('win-table'), { size: 9, color: INK2, after: 6 });
+    table([WIN_HEAD].concat(windowRows(m).map(function (r) {
+      return r.length === 2 ? [r[0], { t: r[1], span: 5, left: true, color: MUTED }]
+        : r.map(function (c) { return /\(headline\)/.test(c) ? { t: c, bold: true } : c; });
+    })), [120, 110, 80, 76, 70, 76], 9);
+    txt(textOf('lumpy'), { size: 9, color: INK2, after: 18 });
+
+    // charts, kept whole on a page
+    chart('c-spend', titleIn('c-spend'), hintIn('c-spend'));
+    chart('c-flow', titleIn('c-flow'), hintIn('c-flow'));
+    chart('c-exp', titleIn('c-exp'), hintIn('c-exp').replace('the cost types above', 'the cost types in Monthly spending'));
+    chart('c-rev', titleIn('c-rev'), textOf('rev-hint'));
+    chart('c-hist', 'Runway history', textOf('hist-proj') || 'Estimated runway at each month-end.', textOf('hist-hint'));
+
+    var cl = checkLines();
+    if (cl.length) {
+      heading('Data checks', 90);
+      txt('Each Activity Detail export is checked against its own QuickBooks totals.', { size: 9, color: INK2, after: 8 });
+      cl.forEach(function (l) {
+        if (l.kind === 'file') txt(l.t, { size: 9, bold: true, after: 3 });
+        else if (l.kind === 'head') { y += 6; txt(l.t, { size: 10, bold: true, after: 3 }); }
+        else txt((l.kind === 'warn' ? '•  ' : l.kind === 'ok' ? 'OK  ' : 'X  ') + l.t, { size: 8.5, x: M + 12, w: CW - 12, color: l.kind === 'ok' ? P.status.good : l.kind === 'bad' ? P.status.critical : INK2, after: 3 });
+      });
+      y += 16;
+    }
+
+    heading('Monthly table', 120);
+    txt('Newest month first. Burn = average monthly spending over the trailing 3 or 12 months.', { size: 9, color: INK2, after: 6 });
+    table(monthRows(m), [44, 50, 58, 50, 46, 60, 52, 54, 58, 60], 7.5);
+
+    // footer on every page
+    var n = doc.getNumberOfPages(), foot = clean("Ladies Let's Talk · Financial Health · " + throughText(m));
+    for (var i = 1; i <= n; i++) {
+      doc.setPage(i); font(7.5, false, MUTED);
+      doc.text(foot, M, PH - 28, { baseline: 'top' });
+      doc.text('Page ' + i + ' of ' + n, PW - M, PH - 28, { baseline: 'top', align: 'right' });
+    }
+    doc.setProperties({ title: reportName(m), author: "Ladies Let's Talk" });
+    doc.save(reportName(m) + '.pdf');
+  }
+
+  // PowerPoint: native text and tables (editable), charts as images
+  function buildPptx() {
+    var m = state.metrics, W = 13.333, X = 0.5, CW = W - 2 * X;
+    var e = chartImages({ 'c-spend': [1100, 480], 'c-flow': [1100, 480], 'c-exp': [1100, 480], 'c-rev': [1100, 480], 'c-hist': [1100, 420] }, 2, 14);
+    var P = e.P, hex = function (c) { return c.replace('#', '').slice(0, 6).toUpperCase(); };
+    var INK = hex(P.ink), INK2 = hex(P.ink2), MUTED = hex(P.muted), GRID = hex(P.grid), WASH = hex(P.wash), ACCENT = hex(P.groups['Payroll']);
+    var pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_WIDE'; pptx.title = reportName(m); pptx.company = "Ladies Let's Talk";
+    pptx.theme = { headFontFace: 'Arial', bodyFontFace: 'Arial' };
+    var footer = "Ladies Let's Talk · Financial Health · " + throughText(m);
+    var page = function (title, sub) {
+      var s = pptx.addSlide();
+      s.background = { color: 'FFFFFF' };
+      s.addText(title, { x: X, y: 0.3, w: CW, h: 0.6, fontSize: 26, bold: true, color: INK, margin: 0 });
+      if (sub) s.addText(sub, { x: X, y: 0.9, w: CW, h: 0.55, fontSize: 13, color: INK2, margin: 0, valign: 'top' });
+      s.addText(footer, { x: X, y: 7.0, w: CW - 1, h: 0.3, fontSize: 9, color: MUTED, margin: 0 });
+      s.slideNumber = { x: W - X - 0.6, y: 7.0, w: 0.6, h: 0.3, fontSize: 9, color: MUTED, align: 'right' };
+      return s;
+    };
+    var cell = function (t, o) { return { text: t, options: o || {} }; };
+    var table = function (s, rows, y, o) {
+      var data = rows.map(function (r, i) {
+        return r.map(function (c, j) {
+          var opt = { align: j ? 'right' : 'left', color: i ? INK : INK2, bold: !i };
+          if (!i) opt.fill = { color: WASH };
+          if (typeof c === 'object') { Object.keys(c.options).forEach(function (k) { opt[k] = c.options[k]; }); c = c.text; }
+          return cell(c, opt);
+        });
+      });
+      s.addTable(data, Object.assign({ x: X, y: y, w: CW, fontSize: 13, border: { type: 'solid', pt: 0.5, color: GRID }, margin: 0.06, valign: 'middle' }, o || {}));
+    };
+    var chart = function (id, title, sub, note) {
+      var img = e.out[id];
+      if (!img) return;
+      var s = page(title, sub), top = 1.55, h = (note ? 6.25 : 6.85) - top, w = Math.min(CW, h * img.w / img.h);
+      s.addImage({ data: img.src.replace(/^data:/, ''), x: X + (CW - w) / 2, y: top, w: w, h: w * img.h / img.w });
+      if (note) s.addText(note, { x: X, y: 6.3, w: CW, h: 0.6, fontSize: 10, color: MUTED, margin: 0, valign: 'top' });
+    };
+    var k = kpiList(m), st = m.status;
+
+    // 1. cover
+    var s = pptx.addSlide();
+    s.background = { color: 'FFFFFF' };
+    s.addText("Ladies Let's Talk", { x: X, y: 2.0, w: CW, h: 0.5, fontSize: 18, bold: true, color: ACCENT, margin: 0 });
+    s.addText('Financial Health Report', { x: X, y: 2.5, w: CW, h: 0.9, fontSize: 40, bold: true, color: INK, margin: 0 });
+    s.addText(throughText(m), { x: X, y: 3.45, w: CW, h: 0.45, fontSize: 16, color: INK2, margin: 0 });
+    if (k[2].unit) s.addText([
+      { text: 'Runway ' + k[2].value + ' months', options: { color: INK } },
+      { text: st ? '  ·  ' + LABEL[st] : '', options: { color: st ? hex(P.status[st]) : INK } }
+    ], { x: X, y: 4.3, w: CW, h: 0.6, fontSize: 24, bold: true, margin: 0 });
+    s.addText('Generated ' + today(), { x: X, y: 6.6, w: CW, h: 0.35, fontSize: 11, color: MUTED, margin: 0 });
+
+    // 2. at a glance
+    s = page('At a glance', textOf('th-def'));
+    var gap = 0.25, bw = (CW - 3 * gap) / 4;
+    k.forEach(function (t, i) {
+      var x = X + i * (bw + gap), col = t.status ? hex(P.status[t.status]) : INK;
+      s.addShape(pptx.ShapeType.roundRect, { x: x, y: 1.6, w: bw, h: 2.0, fill: { color: 'FFFFFF' }, line: { color: GRID, width: 1 }, rectRadius: 0.12 });
+      s.addText([
+        { text: t.label.toUpperCase(), options: { fontSize: 11, color: INK2, breakLine: true } },
+        { text: t.value + (t.unit ? ' ' + t.unit : ''), options: { fontSize: t.unit ? 28 : 30, bold: true, color: col, breakLine: true } },
+        { text: t.note, options: { fontSize: 11, color: t.status ? col : INK2, bold: !!t.status } }
+      ], { x: x + 0.15, y: 1.7, w: bw - 0.3, h: 1.8, valign: 'top', margin: 0, paraSpaceAfter: 4 });
+    });
+    if (textOf('hist-proj')) s.addText(textOf('hist-proj'), { x: X, y: 4.0, w: CW, h: 1.2, fontSize: 16, color: INK, margin: 0, valign: 'top' });
+    s.addText(assumptions(m), { x: X, y: 6.5, w: CW, h: 0.4, fontSize: 10, color: MUTED, margin: 0 });
+
+    // 3. runway windows
+    s = page('Runway by averaging window', hintIn('win-table'));
+    table(s, [WIN_HEAD].concat(windowRows(m).map(function (r) {
+      return r.length === 2 ? [r[0], cell(r[1], { colspan: 5, align: 'left', color: MUTED })]
+        : r.map(function (c) { return /\(headline\)/.test(c) ? cell(c, { bold: true }) : c; });
+    })), 1.7, { colW: [2.6, 2.6, 1.85, 1.75, 1.75, 1.78] });
+    if (textOf('lumpy')) s.addText(textOf('lumpy'), { x: X, y: 4.0, w: CW, h: 1, fontSize: 13, color: INK2, margin: 0, valign: 'top' });
+
+    // 4-8. charts
+    chart('c-spend', titleIn('c-spend'), hintIn('c-spend'));
+    chart('c-flow', titleIn('c-flow'), hintIn('c-flow'));
+    chart('c-exp', titleIn('c-exp'), hintIn('c-exp').replace('the cost types above', 'the cost types in Monthly spending'));
+    chart('c-rev', titleIn('c-rev'), textOf('rev-hint'));
+    chart('c-hist', 'Runway history', textOf('hist-proj') || 'Estimated runway at each month-end.', textOf('hist-hint'));
+
+    // 9. data checks: what the numbers were checked against
+    var runs = [], add = function (t, o) { runs.push({ text: t, options: Object.assign({ breakLine: true, fontSize: 12, color: INK }, o || {}) }); };
+    checkLines().forEach(function (l) {
+      if (l.kind === 'file') add(l.t, { bold: true });
+      else if (l.kind === 'head') { add(' ', { fontSize: 6 }); add(l.t, { bold: true }); }
+      else if (l.kind === 'warn') add(l.t, { bullet: true, color: INK2, fontSize: 11 });
+      else add((l.kind === 'ok' ? '✓ ' : '✕ ') + l.t, { color: hex(P.status[l.kind === 'ok' ? 'good' : 'critical']), indentLevel: 1 });
+    });
+    if (runs.length) {
+      runs[runs.length - 1].options.breakLine = false;
+      page('Data checks', 'Each Activity Detail export is checked against its own QuickBooks totals.')
+        .addText(runs, { x: X, y: 1.55, w: CW, h: 5.3, valign: 'top', margin: 0, paraSpaceAfter: 4, fit: 'shrink' });
+    }
+
+    // 10. monthly table, 14 months per slide (split by hand: PptxGenJS autoPage drops the title slide's rows)
+    var mr = monthRows(m), per = 14;
+    for (var i = 1; i < mr.length; i += per) {
+      s = page('Monthly table' + (i > 1 ? ' (continued)' : ''), 'Newest month first. Burn = average monthly spending over the trailing 3 or 12 months.');
+      table(s, [mr[0]].concat(mr.slice(i, i + per)), 1.55, { fontSize: 11, rowH: 0.34 });
+    }
+    return pptx.writeFile({ fileName: reportName(m) + '.pptx' });
+  }
 
   var mq = window.matchMedia('(prefers-color-scheme: dark)');
   if (mq.addEventListener) mq.addEventListener('change', function () { if (state.metrics) render(false); });

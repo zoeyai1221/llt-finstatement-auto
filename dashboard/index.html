@@ -811,10 +811,18 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     if (mo === undefined) return null;
     return new Date(+m[3], mo, +m[2]);
   }
+  // "September, 2025" (month-range exports): first or last day of that month
+  function parseMonthYear(s, end) {
+    var m = /^\s*([A-Za-z]{3})[a-z]*\.?,?\s+(\d{4})\s*$/.exec(s || '');
+    var mo = m && MONTHS[m[1].toLowerCase()];
+    if (mo === undefined || mo === null) return null;
+    return end ? new Date(+m[2], mo + 1, 0) : new Date(+m[2], mo, 1);
+  }
+  // "Sep 1, 2025 - Sep 30, 2026" (date-range exports) or "September, 2025-September, 2026" (month-range exports)
   function parsePeriod(s) {
     var parts = String(s || '').split(/\s*[-–—]\s*(?=[A-Za-z])/);
     if (parts.length < 2) return null;
-    var a = parseLongDate(parts[0]), b = parseLongDate(parts[1]);
+    var a = parseLongDate(parts[0]) || parseMonthYear(parts[0], false), b = parseLongDate(parts[1]) || parseMonthYear(parts[1], true);
     return a && b ? { start: a, end: b } : null;
   }
   // "Cash Basis  Thursday, June 25, 2026 07:59 PM GMTZ"
@@ -855,7 +863,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   /* ---------- Statement of Activity Detail ---------- */
   function parseActivity(rows, fileName) {
-    var warnings = [];
+    // warnings need action (shown at the top); notes only explain how the figures were handled (shown under Data checks)
+    var warnings = [], notes = [];
     var org = cellText(rows[0] && rows[0][0]);
     var period = null, stamp = null, headerIdx = -1;
     for (var i = 0; i < Math.min(rows.length, 10); i++) {
@@ -872,6 +881,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     for (var j = rows.length - 1; j > headerIdx; j--) {
       var t = cellText(rows[j] && rows[j][0]);
       if (/^(cash|accrual) basis/i.test(t)) { stamp = parseStamp(t); basis = /^cash/i.test(t) ? 'cash' : 'accrual'; break; }
+    }
+    // a month-range export run mid-month says "…-October, 2026" but only holds data up to the export day
+    if (period && stamp && period.end > stamp) {
+      period.end = new Date(stamp.getFullYear(), stamp.getMonth(), stamp.getDate());
+      notes.push('The report period runs past the export date (' + ymd(stamp) + '); only data up to that day is included, so that month counts as incomplete.');
     }
 
     // accounts that have a "... with sub-accounts" total are parents: plain "Total for X" must not close them
@@ -929,11 +943,17 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     chk('Total income', sums.revenue, reported.revenue);
     chk('Total expenses', sums.expense, reported.expense);
     chk('Net income', netComputed, reported.netIncome);
-    if (sums.other !== 0) warnings.push('Transactions found under "Other Income/Expense"; they are included in net cash flow but not in burn.');
+    if (sums.other !== 0) {
+      var oth = facts.filter(function (f) { return f.kind === 'other'; });
+      var accts = oth.map(function (f) { return f.sub || f.account; }).filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+      var amt = round2(sums.other);
+      notes.push(oth.length + ' transaction' + (oth.length === 1 ? '' : 's') + ' under "Other Income/Expense" (' + accts.join(', ') + '), net ' + (amt < 0 ? '-$' : '+$') + Math.abs(amt).toFixed(2) +
+        '. Counted in income and net cash flow, but never as spending, so burn and runway are unaffected.');
+    }
     if (!/cash/.test(basis)) warnings.push('This export is not marked "Cash Basis". Use Cash Basis so figures match bank cash.');
 
     return {
-      kind: 'activity', fileName: fileName, org: org, period: period, exportedAt: stamp, basis: basis,
+      kind: 'activity', fileName: fileName, org: org, period: period, exportedAt: stamp, basis: basis, notes: notes,
       facts: facts, checks: checks, warnings: warnings, rowCount: facts.length
     };
   }
@@ -1315,7 +1335,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     state.activity.forEach(function (a) { warn = warn.concat(a.warnings.map(function (w) { return a.fileName + ': ' + w; })); });
     if (state.position) warn = warn.concat(state.position.warnings);
     if (!state.position && cash === null) warn.push('No Statement of Financial Position loaded. Drop it in, or type the cash balance above to see runway.');
-    $('msgs').innerHTML = msgs + banner(renderChecks(m.notes), 'err') + banner(warn);
+    var fileNotes = [];
+    state.activity.forEach(function (a) { fileNotes = fileNotes.concat(a.notes.map(function (n) { return a.fileName + ': ' + n; })); });
+    state.notes = m.notes.concat(fileNotes);
+    $('msgs').innerHTML = msgs + banner(renderChecks(state.notes), 'err') + banner(warn);
 
     $('asof').textContent = 'Through ' + mlabel(m.lastMonth) + ' (last complete month)' + (asOf ? ' · cash as of ' + L.ymd(asOf) : '');
     $('cash-src').textContent = state.position && state.position.cash !== null && cash === state.position.cash
@@ -1650,7 +1673,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   }
   var hintIn = function (id) { return $(id).closest('.card').querySelector('.hint').textContent.trim(); };
   var titleIn = function (id) { return $(id).closest('.card').querySelector('h2').textContent.trim(); };
-  // what every number was checked against, as plain lines: kind is file | ok | bad | head | warn
+  // what every number was checked against, as plain lines: kind is file | ok | bad | head | warn (a bullet under a head)
   function checkLines() {
     var out = [];
     state.activity.forEach(function (a) {
@@ -1661,6 +1684,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     if (pos) out.push({ kind: 'file', t: pos.fileName + ' — as of ' + (pos.asOf ? L.ymd(pos.asOf) : '?') + ', cash ' + money(pos.cash, 2) });
     var warns = [].map.call($('msgs').querySelectorAll('li'), function (li) { return li.textContent; });
     if (warns.length) { out.push({ kind: 'head', t: 'Warnings' }); warns.forEach(function (w) { out.push({ kind: 'warn', t: w }); }); }
+    if (state.notes && state.notes.length) { out.push({ kind: 'head', t: 'Notes' }); state.notes.forEach(function (n) { out.push({ kind: 'warn', t: n }); }); }
     return out;
   }
 

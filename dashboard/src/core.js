@@ -33,10 +33,18 @@
     if (mo === undefined) return null;
     return new Date(+m[3], mo, +m[2]);
   }
+  // "September, 2025" (month-range exports): first or last day of that month
+  function parseMonthYear(s, end) {
+    var m = /^\s*([A-Za-z]{3})[a-z]*\.?,?\s+(\d{4})\s*$/.exec(s || '');
+    var mo = m && MONTHS[m[1].toLowerCase()];
+    if (mo === undefined || mo === null) return null;
+    return end ? new Date(+m[2], mo + 1, 0) : new Date(+m[2], mo, 1);
+  }
+  // "Sep 1, 2025 - Sep 30, 2026" (date-range exports) or "September, 2025-September, 2026" (month-range exports)
   function parsePeriod(s) {
     var parts = String(s || '').split(/\s*[-–—]\s*(?=[A-Za-z])/);
     if (parts.length < 2) return null;
-    var a = parseLongDate(parts[0]), b = parseLongDate(parts[1]);
+    var a = parseLongDate(parts[0]) || parseMonthYear(parts[0], false), b = parseLongDate(parts[1]) || parseMonthYear(parts[1], true);
     return a && b ? { start: a, end: b } : null;
   }
   // "Cash Basis  Thursday, June 25, 2026 07:59 PM GMTZ"
@@ -77,7 +85,8 @@
 
   /* ---------- Statement of Activity Detail ---------- */
   function parseActivity(rows, fileName) {
-    var warnings = [];
+    // warnings need action (shown at the top); notes only explain how the figures were handled (shown under Data checks)
+    var warnings = [], notes = [];
     var org = cellText(rows[0] && rows[0][0]);
     var period = null, stamp = null, headerIdx = -1;
     for (var i = 0; i < Math.min(rows.length, 10); i++) {
@@ -94,6 +103,11 @@
     for (var j = rows.length - 1; j > headerIdx; j--) {
       var t = cellText(rows[j] && rows[j][0]);
       if (/^(cash|accrual) basis/i.test(t)) { stamp = parseStamp(t); basis = /^cash/i.test(t) ? 'cash' : 'accrual'; break; }
+    }
+    // a month-range export run mid-month says "…-October, 2026" but only holds data up to the export day
+    if (period && stamp && period.end > stamp) {
+      period.end = new Date(stamp.getFullYear(), stamp.getMonth(), stamp.getDate());
+      notes.push('The report period runs past the export date (' + ymd(stamp) + '); only data up to that day is included, so that month counts as incomplete.');
     }
 
     // accounts that have a "... with sub-accounts" total are parents: plain "Total for X" must not close them
@@ -151,11 +165,17 @@
     chk('Total income', sums.revenue, reported.revenue);
     chk('Total expenses', sums.expense, reported.expense);
     chk('Net income', netComputed, reported.netIncome);
-    if (sums.other !== 0) warnings.push('Transactions found under "Other Income/Expense"; they are included in net cash flow but not in burn.');
+    if (sums.other !== 0) {
+      var oth = facts.filter(function (f) { return f.kind === 'other'; });
+      var accts = oth.map(function (f) { return f.sub || f.account; }).filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+      var amt = round2(sums.other);
+      notes.push(oth.length + ' transaction' + (oth.length === 1 ? '' : 's') + ' under "Other Income/Expense" (' + accts.join(', ') + '), net ' + (amt < 0 ? '-$' : '+$') + Math.abs(amt).toFixed(2) +
+        '. Counted in income and net cash flow, but never as spending, so burn and runway are unaffected.');
+    }
     if (!/cash/.test(basis)) warnings.push('This export is not marked "Cash Basis". Use Cash Basis so figures match bank cash.');
 
     return {
-      kind: 'activity', fileName: fileName, org: org, period: period, exportedAt: stamp, basis: basis,
+      kind: 'activity', fileName: fileName, org: org, period: period, exportedAt: stamp, basis: basis, notes: notes,
       facts: facts, checks: checks, warnings: warnings, rowCount: facts.length
     };
   }

@@ -513,7 +513,10 @@ button[aria-busy="true"] { cursor: progress; opacity: .7; }
     state.activity.forEach(function (a) { warn = warn.concat(a.warnings.map(function (w) { return a.fileName + ': ' + w; })); });
     if (state.position) warn = warn.concat(state.position.warnings);
     if (!state.position && cash === null) warn.push('No Statement of Financial Position loaded. Drop it in, or type the cash balance above to see runway.');
-    $('msgs').innerHTML = msgs + banner(renderChecks(m.notes), 'err') + banner(warn);
+    var fileNotes = [];
+    state.activity.forEach(function (a) { fileNotes = fileNotes.concat(a.notes.map(function (n) { return a.fileName + ': ' + n; })); });
+    state.notes = m.notes.concat(fileNotes);
+    $('msgs').innerHTML = msgs + banner(renderChecks(state.notes), 'err') + banner(warn);
 
     $('asof').textContent = 'Through ' + mlabel(m.lastMonth) + ' (last complete month)' + (asOf ? ' · cash as of ' + L.ymd(asOf) : '');
     $('cash-src').textContent = state.position && state.position.cash !== null && cash === state.position.cash
@@ -848,7 +851,7 @@ button[aria-busy="true"] { cursor: progress; opacity: .7; }
   }
   var hintIn = function (id) { return $(id).closest('.card').querySelector('.hint').textContent.trim(); };
   var titleIn = function (id) { return $(id).closest('.card').querySelector('h2').textContent.trim(); };
-  // what every number was checked against, as plain lines: kind is file | ok | bad | head | warn
+  // what every number was checked against, as plain lines: kind is file | ok | bad | head | warn (a bullet under a head)
   function checkLines() {
     var out = [];
     state.activity.forEach(function (a) {
@@ -859,6 +862,7 @@ button[aria-busy="true"] { cursor: progress; opacity: .7; }
     if (pos) out.push({ kind: 'file', t: pos.fileName + ' — as of ' + (pos.asOf ? L.ymd(pos.asOf) : '?') + ', cash ' + money(pos.cash, 2) });
     var warns = [].map.call($('msgs').querySelectorAll('li'), function (li) { return li.textContent; });
     if (warns.length) { out.push({ kind: 'head', t: 'Warnings' }); warns.forEach(function (w) { out.push({ kind: 'warn', t: w }); }); }
+    if (state.notes && state.notes.length) { out.push({ kind: 'head', t: 'Notes' }); state.notes.forEach(function (n) { out.push({ kind: 'warn', t: n }); }); }
     return out;
   }
 
